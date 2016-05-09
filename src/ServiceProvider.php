@@ -6,9 +6,9 @@ use DreamFactory\Core\Enums\ServiceTypeGroups;
 use DreamFactory\Core\Oracle\Database\Connectors\OracleConnector;
 use DreamFactory\Core\Oracle\Database\OracleConnection;
 use DreamFactory\Core\Oracle\Database\Schema\OracleSchema;
+use DreamFactory\Core\Oracle\Models\OracleDbConfig;
 use DreamFactory\Core\Services\ServiceManager;
 use DreamFactory\Core\Services\ServiceType;
-use DreamFactory\Core\SqlDb\Models\SqlDbConfig;
 use DreamFactory\Core\Oracle\Services\OracleDb;
 use Illuminate\Database\DatabaseManager;
 
@@ -33,7 +33,7 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
                     'label'          => 'Oracle',
                     'description'    => 'Database service supporting SQL connections.',
                     'group'          => ServiceTypeGroups::DATABASE,
-                    'config_handler' => SqlDbConfig::class,
+                    'config_handler' => OracleDbConfig::class,
                     'factory'        => function ($config){
                         return new OracleDb($config);
                     },
