@@ -20,4 +20,9 @@ class OracleDbConfig extends SqlDbConfig
         return
             'oci:dbname=(DESCRIPTION = (ADDRESS_LIST = (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.1.1)(PORT = 1521))) (CONNECT_DATA = (SID = db)))';
     }
+
+    public static function getDefaultPort()
+    {
+        return 1521;
+    }
 }
