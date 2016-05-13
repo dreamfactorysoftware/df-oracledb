@@ -4,8 +4,8 @@ namespace DreamFactory\Core\Oracle\Database\Query;
 
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
-use DreamFactory\Core\Database\Query\Grammars\OracleGrammar;
-use DreamFactory\Core\Database\Query\Processors\OracleProcessor;
+use DreamFactory\Core\Oracle\Database\Query\Grammars\OracleGrammar;
+use DreamFactory\Core\Oracle\Database\Query\Processors\OracleProcessor;
 
 class OracleBuilder extends Builder
 {
