@@ -461,6 +461,7 @@ SQL;
      */
     protected function findTableNames($schema = '', $include_views = true)
     {
+        $schemas = $this->connection->getDoctrineSchemaManager()->listTableNames();
         if ($include_views) {
             $condition = "object_type in ('TABLE','VIEW')";
         } else {

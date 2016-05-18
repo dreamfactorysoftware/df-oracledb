@@ -23,12 +23,12 @@ class OracleConnection extends Connection
     protected $schema;
 
     /**
-     * @var \DreamFactory\Core\Database\Schema\Sequence
+     * @var Sequence
      */
     protected $sequence;
 
     /**
-     * @var \DreamFactory\Core\Database\Schema\Trigger
+     * @var Trigger
      */
     protected $trigger;
 
@@ -43,6 +43,16 @@ class OracleConnection extends Connection
         parent::__construct($pdo, $database, $tablePrefix, $config);
         $this->sequence = new Sequence($this);
         $this->trigger  = new Trigger($this);
+    }
+
+    /**
+     * Get current schema.
+     *
+     * @return string
+     */
+    public function getSchema()
+    {
+        return $this->schema;
     }
 
     /**
@@ -86,7 +96,7 @@ class OracleConnection extends Connection
     /**
      * Get sequence class.
      *
-     * @return \DreamFactory\Core\Database\Schema\Sequence
+     * @return Sequence
      */
     public function getSequence()
     {
@@ -96,8 +106,8 @@ class OracleConnection extends Connection
     /**
      * Set sequence class.
      *
-     * @param \DreamFactory\Core\Database\Schema\Sequence $sequence
-     * @return \DreamFactory\Core\Database\Schema\Sequence
+     * @param Sequence $sequence
+     * @return Sequence
      */
     public function setSequence(Sequence $sequence)
     {
@@ -107,7 +117,7 @@ class OracleConnection extends Connection
     /**
      * Get oracle trigger class.
      *
-     * @return \DreamFactory\Core\Database\Schema\Trigger
+     * @return Trigger
      */
     public function getTrigger()
     {
@@ -117,8 +127,8 @@ class OracleConnection extends Connection
     /**
      * Set oracle trigger class.
      *
-     * @param \DreamFactory\Core\Database\Schema\Trigger $trigger
-     * @return \DreamFactory\Core\Database\Schema\Trigger
+     * @param Trigger $trigger
+     * @return Trigger
      */
     public function setTrigger(Trigger $trigger)
     {
@@ -128,7 +138,7 @@ class OracleConnection extends Connection
     /**
      * Get a schema builder instance for the connection.
      *
-     * @return \DreamFactory\Core\Database\Schema\OracleBuilder
+     * @return SchemaBuilder
      */
     public function getSchemaBuilder()
     {
@@ -143,7 +153,7 @@ class OracleConnection extends Connection
      * Begin a fluent query against a database table.
      *
      * @param  string $table
-     * @return \DreamFactory\Core\Database\Query\OracleBuilder
+     * @return QueryBuilder
      */
     public function table($table)
     {
@@ -197,7 +207,7 @@ class OracleConnection extends Connection
     /**
      * Get the default query grammar instance.
      *
-     * @return \DreamFactory\Core\Database\Query\Grammars\OracleGrammar
+     * @return QueryGrammar
      */
     protected function getDefaultQueryGrammar()
     {
@@ -207,7 +217,7 @@ class OracleConnection extends Connection
     /**
      * Set the table prefix and return the grammar.
      *
-     * @param \Illuminate\Database\Grammar|\DreamFactory\Core\Database\Query\Grammars\OracleGrammar|\DreamFactory\Core\Database\Schema\Grammars\OracleGrammar $grammar
+     * @param \Illuminate\Database\Grammar|QueryGrammar|SchemaGrammar $grammar
      * @return \Illuminate\Database\Grammar
      */
     public function withTablePrefix(Grammar $grammar)
@@ -218,7 +228,7 @@ class OracleConnection extends Connection
     /**
      * Set the schema prefix and return the grammar.
      *
-     * @param \Illuminate\Database\Grammar|\DreamFactory\Core\Database\Query\Grammars\OracleGrammar|\DreamFactory\Core\Database\Schema\Grammars\OracleGrammar $grammar
+     * @param \Illuminate\Database\Grammar|QueryGrammar|SchemaGrammar $grammar
      * @return \Illuminate\Database\Grammar
      */
     public function withSchemaPrefix(Grammar $grammar)
@@ -241,7 +251,7 @@ class OracleConnection extends Connection
     /**
      * Get the default schema grammar instance.
      *
-     * @return \DreamFactory\Core\Database\Schema\Grammars\OracleGrammar
+     * @return SchemaGrammar
      */
     protected function getDefaultSchemaGrammar()
     {
@@ -251,7 +261,7 @@ class OracleConnection extends Connection
     /**
      * Get the default post processor instance.
      *
-     * @return \DreamFactory\Core\Database\Query\Processors\OracleProcessor
+     * @return Processor
      */
     protected function getDefaultPostProcessor()
     {

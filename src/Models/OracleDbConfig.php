@@ -11,18 +11,47 @@ class OracleDbConfig extends SqlDbConfig
 {
     public static function getDriverName()
     {
-        return 'oci';
-    }
-
-    public static function getDefaultDsn()
-    {
-        // http://php.net/manual/en/ref.pdo-oci.connection.php
-        return
-            'oci:dbname=(DESCRIPTION = (ADDRESS_LIST = (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.1.1)(PORT = 1521))) (CONNECT_DATA = (SID = db)))';
+        return 'oracle';
     }
 
     public static function getDefaultPort()
     {
         return 1521;
+    }
+
+    public static function getDefaultCharset()
+    {
+        return 'AL32UTF8';
+    }
+
+    public static function getDefaultConnectionInfo()
+    {
+        $defaults = parent::getDefaultConnectionInfo();
+        $defaults[] = [
+            'name'        => 'tns',
+            'label'       => 'TNS Full Connection String',
+            'type'        => 'string',
+            'description' => 'Overrides all other settings.'
+        ];
+        $defaults[] = [
+            'name'        => 'protocol',
+            'label'       => 'Connection Protocol',
+            'type'        => 'string',
+            'description' => 'Defaults to TCP.'
+        ];
+        $defaults[] = [
+            'name'        => 'charset',
+            'label'       => 'Character Set',
+            'type'        => 'string',
+            'description' => 'The character set to use for this connection, i.e. ' . static::getDefaultCharset()
+        ];
+        $defaults[] = [
+            'name'        => 'service_name',
+            'label'       => 'Service Name',
+            'type'        => 'string',
+            'description' => 'Optional service name if database (i.e. SID) is not set.'
+        ];
+
+        return $defaults;
     }
 }
