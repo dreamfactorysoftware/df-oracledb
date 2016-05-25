@@ -2,6 +2,7 @@
 namespace DreamFactory\Core\Oracle\Database\Schema;
 
 use DreamFactory\Core\Database\DataReader;
+use DreamFactory\Core\Database\Schema\ColumnSchema;
 use DreamFactory\Core\Database\Schema\Schema;
 use DreamFactory\Core\Database\Schema\TableSchema;
 
@@ -236,34 +237,6 @@ class OracleSchema extends Schema
     }
 
     /**
-     * Quotes a table name for use in a query.
-     * A simple table name does not schema prefix.
-     *
-     * @param string $name table name
-     *
-     * @return string the properly quoted table name
-     * @since 1.1.6
-     */
-    public function quoteSimpleTableName($name)
-    {
-        return '"' . $name . '"';
-    }
-
-    /**
-     * Quotes a column name for use in a query.
-     * A simple column name does not contain prefix.
-     *
-     * @param string $name column name
-     *
-     * @return string the properly quoted column name
-     * @since 1.1.6
-     */
-    public function quoteSimpleColumnName($name)
-    {
-        return '"' . $name . '"';
-    }
-
-    /**
      * @param boolean $refresh if we need to refresh schema cache.
      *
      * @return string default schema.
@@ -400,11 +373,11 @@ EOD;
         $c->allowNull = $column['NULLABLE'] === 'Y';
         $c->isPrimaryKey = strpos($column['KEY'], 'P') !== false;
         $c->dbType = $column['DATA_TYPE'];
-        $c->extractLimit($column['DATA_TYPE']);
-        $c->extractFixedLength($column['DATA_TYPE']);
-        $c->extractMultiByteSupport($column['DATA_TYPE']);
-        $c->extractType($column['DATA_TYPE']);
-        $c->extractDefault($column['DATA_DEFAULT']);
+        $this->extractLimit($c, $column['DATA_TYPE']);
+        $c->fixedLength = $this->extractFixedLength($column['DATA_TYPE']);
+        $c->supportsMultibyte = $this->extractMultiByteSupport($column['DATA_TYPE']);
+        $this->extractType($c, $column['DATA_TYPE']);
+        $this->extractDefault($c, $column['DATA_DEFAULT']);
         $c->comment = $column['COLUMN_COMMENT'] === null ? '' : $column['COLUMN_COMMENT'];
 
         return $c;
@@ -791,6 +764,49 @@ SQL;
     public function getTimestampForSet($update = false)
     {
         return $this->connection->raw('(CURRENT_TIMESTAMP)');
+    }
+
+    /**
+     * Extracts the PHP type from DB type.
+     *
+     * @param string $dbType DB type
+     */
+    public function extractType(ColumnSchema &$column, $dbType)
+    {
+        parent::extractType($column, $dbType);
+        if (strpos($dbType, 'FLOAT') !== false) {
+            $column->phpType = 'double';
+        }
+
+        if (strpos($dbType, 'NUMBER') !== false || strpos($dbType, 'INTEGER') !== false) {
+            if (strpos($dbType, '(') && preg_match('/\((.*)\)/', $dbType, $matches)) {
+                $values = explode(',', $matches[1]);
+                if (isset($values[1]) and (((int)$values[1]) > 0)) {
+                    $column->phpType = 'double';
+                } else {
+                    $column->phpType = 'integer';
+                }
+            } else {
+                $column->phpType = 'double';
+            }
+        } else {
+            $column->phpType = 'string';
+        }
+    }
+
+    /**
+     * Extracts the default value for the column.
+     * The value is typecasted to correct PHP type.
+     *
+     * @param mixed $defaultValue the default value obtained from metadata
+     */
+    public function extractDefault(ColumnSchema &$field, $defaultValue)
+    {
+        if (stripos($defaultValue, 'timestamp') !== false) {
+            $field->defaultValue = null;
+        } else {
+            parent::extractDefault($field, $defaultValue);
+        }
     }
 
     /**
