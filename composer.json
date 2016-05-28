@@ -1,0 +1,45 @@
+{
+  "name":        "dreamfactory/df-oracledb",
+  "description": "The DreamFactory(tm) Oracle DB Service.",
+  "keywords":    [
+    "dreamfactory",
+    "dsp",
+    "rest",
+    "oracle",
+    "sql",
+    "database",
+    "db"
+  ],
+  "homepage":    "https://www.dreamfactory.com/",
+  "license":     "proprietary",
+  "authors":     [
+    {
+      "name":  "Arif Islam",
+      "email": "arifislam@dreamfactory.com"
+    },
+    {
+      "name":  "Lee Hicks",
+      "email": "leehicks@dreamfactory.com"
+    }
+  ],
+  "support":     {
+    "email":  "support@dreamfactory.com",
+    "source": "https://github.com/dreamfactorysoftware/df-oracledb",
+    "issues": "https://github.com/dreamfactorysoftware/df-oracledb/issues",
+    "wiki":   "https://wiki.dreamfactory.com"
+  },
+  "require":     {
+    "dreamfactory/df-core":       "~0.3.0",
+    "yajra/laravel-pdo-via-oci8": "1.*"
+  },
+  "autoload":    {
+    "psr-4": {
+      "DreamFactory\\Core\\Oracle\\": "src/"
+    }
+  },
+  "extra":       {
+    "branch-alias": {
+      "dev-develop": "0.3.x-dev"
+    }
+  }
+}
