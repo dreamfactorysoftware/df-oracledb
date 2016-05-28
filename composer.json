@@ -11,15 +11,11 @@
     "db"
   ],
   "homepage":    "https://www.dreamfactory.com/",
-  "license":     "Apache-2.0",
+  "license":     "proprietary",
   "authors":     [
     {
       "name":  "Arif Islam",
       "email": "arifislam@dreamfactory.com"
-    },
-    {
-      "name":  "Jerry Ablan",
-      "email": "jerryablan@dreamfactory.com"
     },
     {
       "name":  "Lee Hicks",
@@ -33,8 +29,7 @@
     "wiki":   "https://wiki.dreamfactory.com"
   },
   "require":     {
-    "dreamfactory/php-utils":     "1.1.*",
-    "dreamfactory/df-core":       "~0.2.8",
+    "dreamfactory/df-core":       "~0.3.0",
     "yajra/laravel-pdo-via-oci8": "1.*"
   },
   "autoload":    {
@@ -44,7 +39,7 @@
   },
   "extra":       {
     "branch-alias": {
-      "dev-develop": "0.2.x-dev"
+      "dev-develop": "0.3.x-dev"
     }
   }
 }
