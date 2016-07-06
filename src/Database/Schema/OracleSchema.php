@@ -8,6 +8,7 @@ use DreamFactory\Core\Database\Schema\ProcedureSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Database\Schema\Schema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
+use Symfony\Component\DependencyInjection\Parameter;
 
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
@@ -515,7 +516,7 @@ MYSQL;
                 $rawName = $this->quoteTableName($name);
             }
             $settings = compact('schemaName', 'name', 'publicName', 'rawName');
-            $names[strtolower($name)] =
+            $names[strtolower($publicName)] =
                 ('PROCEDURE' === $type) ? new ProcedureSchema($settings) : new FunctionSchema($settings);
         }
 
@@ -529,30 +530,32 @@ MYSQL;
     {
         $sql = <<<MYSQL
 SELECT 
-    argument_name, position, data_type, in_out, data_length, data_precision, data_scale, default_value
+    argument_name, position, sequence, data_type, in_out, data_length, data_precision, data_scale, default_value, data_level, char_length
 FROM 
     all_arguments
 WHERE 
-    OBJECT_NAME = '{$holder->name}' AND OWNER = '{$holder->schemaName}'
+    OBJECT_NAME = '{$holder->name}' AND OWNER = '{$holder->schemaName}' AND DATA_LEVEL = '0'
 MYSQL;
 
         $rows = $this->connection->select($sql);
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
+            $name = array_get($row, 'ARGUMENT_NAME');
             $pos = intval(array_get($row, 'POSITION'));
             $simpleType = static::extractSimpleType(array_get($row, 'DATA_TYPE'));
-            if (0 === $pos) {
+            if ((0 === $pos) || is_null($name)) {
                 $holder->returnType = $simpleType;
             } else {
                 $holder->addParameter(new ParameterSchema([
-                        'name'          => array_get($row, 'ARGUMENT_NAME'),
+                        'name'          => $name,
                         'position'      => $pos,
-                        'param_type'    => array_get($row, 'IN_OUT'),
+                        'param_type'    => str_replace('/', '', array_get($row, 'IN_OUT')),
                         'type'          => $simpleType,
                         'db_type'       => array_get($row, 'DATA_TYPE'),
-                        'length'        => (isset($row['DATA_LENGTH']) ? null : intval(array_get($row, 'DATA_LENGTH'))),
-                        'precision'     => (isset($row['DATA_PRECISION']) ? null : intval(array_get($row, 'DATA_PRECISION'))),
-                        'scale'         => (isset($row['DATA_SCALE']) ? null : intval(array_get($row, 'DATA_SCALE'))),
+                        'length'        => (isset($row['DATA_LENGTH']) ? intval(array_get($row, 'DATA_LENGTH')) : null),
+                        'precision'     => (isset($row['DATA_PRECISION']) ? intval(array_get($row, 'DATA_PRECISION'))
+                            : null),
+                        'scale'         => (isset($row['DATA_SCALE']) ? intval(array_get($row, 'DATA_SCALE')) : null),
                         'default_value' => array_get($row, 'DEFAULT_VALUE'),
                     ]
                 ));
@@ -779,7 +782,8 @@ SQL;
     /**
      * Extracts the PHP type from DB type.
      *
-     * @param string $dbType DB type
+     * @param ColumnSchema $column
+     * @param string       $dbType DB type
      */
     public function extractType(ColumnSchema &$column, $dbType)
     {
@@ -808,7 +812,8 @@ SQL;
      * Extracts the default value for the column.
      * The value is typecasted to correct PHP type.
      *
-     * @param mixed $defaultValue the default value obtained from metadata
+     * @param ColumnSchema $field
+     * @param mixed        $defaultValue the default value obtained from metadata
      */
     public function extractDefault(ColumnSchema &$field, $defaultValue)
     {
@@ -822,57 +827,73 @@ SQL;
     /**
      * @inheritdoc
      */
-    protected function callProcedureInternal($routine, array $param_schemas, array &$values)
+    protected function getProcedureStatement($routine, array $param_schemas, array &$values)
     {
-        $paramStr = '';
-        foreach ($param_schemas as $key => $paramSchema) {
-            switch ($paramSchema->paramType) {
-                case 'IN':
-                case 'INOUT':
-                case 'OUT':
-                    $pName = ':' . $paramSchema->name;
-                    $paramStr .= (empty($paramStr)) ? $pName : ", $pName";
-                    break;
-                default:
-                    break;
-            }
-        }
+        $paramStr = $this->getRoutineParamString($param_schemas, $values);
 
-        $sql = "BEGIN $routine($paramStr); END;";
-
-        /** @type \PDOStatement $statement */
-        $statement = $this->connection->getPdo()->prepare($sql);
-
-        // do binding
-        foreach ($param_schemas as $key => $paramSchema) {
-            switch ($paramSchema->paramType) {
-                case 'IN':
-                case 'INOUT':
-                case 'OUT':
-                    $pdoType = $this->getPdoType($paramSchema->type);
-                    $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
-                        $pdoType | \PDO::PARAM_INPUT_OUTPUT, $paramSchema->length);
-                    break;
-            }
-        }
-
-        // Oracle stored procedures don't return result sets directly, must use OUT parameter.
-        try {
-            $statement->execute();
-        } catch (\Exception $e) {
-            $errorInfo = $e instanceof \PDOException ? $e : null;
-            $message = $e->getMessage();
-            throw new \Exception($message, (int)$e->getCode(), $errorInfo);
-        }
-
-        return null;
+        return "BEGIN $routine($paramStr); END;";
     }
 
     /**
      * @inheritdoc
      */
-    protected function callFunctionInternal($routine, $paramStr)
+    protected function getFunctionStatement($routine, $param_schemas, $values)
     {
-        return parent::callFunctionInternal($routine, $paramStr) . ' FROM DUAL';
+        return parent::getFunctionStatement($routine, $param_schemas, $values) . ' FROM DUAL';
+    }
+
+    protected function doRoutineBinding($statement, array $paramSchemas, array &$values)
+    {
+        /**
+         * @type string          $key
+         * @type ParameterSchema $paramSchema
+         */
+        foreach ($paramSchemas as $key => $paramSchema) {
+            switch ($paramSchema->paramType) {
+                case 'IN':
+                    $this->bindValue($statement, ':' . $paramSchema->name, array_get($values, $key));
+                    break;
+                case 'INOUT':
+                case 'OUT':
+                    if (0 === strcasecmp('REF CURSOR', $paramSchema->dbType)) {
+                        $pdoType = \PDO::PARAM_STMT;
+                        $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
+                            $pdoType | \PDO::PARAM_INPUT_OUTPUT, -1, OCI_B_CURSOR);
+                    } else {
+                        $pdoType = $this->getPdoType($paramSchema->type);
+                        $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
+                            $pdoType | \PDO::PARAM_INPUT_OUTPUT, $paramSchema->length);
+                    }
+                    break;
+            }
+        }
+    }
+
+    protected function postProcedureCall(array $param_schemas, array &$values)
+    {
+        foreach ($param_schemas as $key => $paramSchema) {
+            switch ($paramSchema->paramType) {
+                case 'INOUT':
+                case 'OUT':
+                    if ((0 === strcasecmp('REF CURSOR', $paramSchema->dbType)) && isset($values[$key])) {
+                        oci_execute($values[$key], OCI_DEFAULT);
+                        oci_fetch_all($values[$key], $array, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_ASSOC );
+                        oci_free_cursor($values[$key]);
+                        $values[$key] = $array;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    protected function handleRoutineException(\Exception $ex)
+    {
+        if (false !== stripos($ex->getMessage(), 'has not been implemented')) {
+            return true;
+        }
+
+        return false;
     }
 }
