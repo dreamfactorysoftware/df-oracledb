@@ -5,10 +5,10 @@ use DreamFactory\Core\Database\Schema\ColumnSchema;
 use DreamFactory\Core\Database\Schema\FunctionSchema;
 use DreamFactory\Core\Database\Schema\ParameterSchema;
 use DreamFactory\Core\Database\Schema\ProcedureSchema;
+use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Database\Schema\Schema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
-use Symfony\Component\DependencyInjection\Parameter;
 
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
@@ -720,7 +720,7 @@ MYSQL;
         $result = parent::dropTable($table);
 
         $sequence = '"' . strtoupper($table) . '_SEQ"';
-        $sql = <<<SQL
+        $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP SEQUENCE {$sequence}';
 EXCEPTION
@@ -729,11 +729,11 @@ EXCEPTION
       RAISE;
     END IF;
 END;
-SQL;
+MYSQL;
         $this->connection->statement($sql);
 
         $trigger = '"' . strtoupper($table) . '_TRG"';
-        $sql = <<<SQL
+        $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP TRIGGER {$trigger}';
 EXCEPTION
@@ -742,7 +742,7 @@ EXCEPTION
       RAISE;
     END IF;
 END;
-SQL;
+MYSQL;
         $this->connection->statement($sql);
 
         return $result;
@@ -827,21 +827,24 @@ SQL;
     /**
      * @inheritdoc
      */
-    protected function getProcedureStatement($routine, array $param_schemas, array &$values)
+    protected function getProcedureStatement(RoutineSchema $routine, array $param_schemas, array &$values)
     {
         $paramStr = $this->getRoutineParamString($param_schemas, $values);
 
-        return "BEGIN $routine($paramStr); END;";
+        return "BEGIN {$routine->rawName}($paramStr); END;";
     }
 
     /**
      * @inheritdoc
      */
-    protected function getFunctionStatement($routine, $param_schemas, $values)
+    protected function getFunctionStatement(RoutineSchema $routine, array $param_schemas, array &$values)
     {
         return parent::getFunctionStatement($routine, $param_schemas, $values) . ' FROM DUAL';
     }
 
+    /**
+     * @inheritdoc
+     */
     protected function doRoutineBinding($statement, array $paramSchemas, array &$values)
     {
         /**
@@ -869,6 +872,9 @@ SQL;
         }
     }
 
+    /**
+     * @inheritdoc
+     */
     protected function postProcedureCall(array $param_schemas, array &$values)
     {
         foreach ($param_schemas as $key => $paramSchema) {
@@ -888,6 +894,9 @@ SQL;
         }
     }
 
+    /**
+     * @inheritdoc
+     */
     protected function handleRoutineException(\Exception $ex)
     {
         if (false !== stripos($ex->getMessage(), 'has not been implemented')) {
