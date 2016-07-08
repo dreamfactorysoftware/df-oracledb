@@ -349,8 +349,9 @@ EOD;
 
                 $trig = $this->connection->select($sql);
                 if (!empty($trig[0])) {
+                    $row = array_change_key_case((array)$trig[0], CASE_UPPER);
                     $c->autoIncrement = true;
-                    $seq = stristr($trig[0]->trigger_body, '.nextval', true);
+                    $seq = stristr(array_get($row, 'TRIGGER_BODY', ''), '.nextval', true);
                     $seq = substr($seq, strrpos($seq, ' ') + 1);
                     $table->sequenceName = $c->name; //$seq;
                     if (DbSimpleTypes::TYPE_INTEGER === $c->type) {
@@ -462,12 +463,10 @@ EOD;
 
         $names = [];
         foreach ($rows as $row) {
-            $schemaName = $row->table_schema;
-            $tableName = $row->table_name;
-            $isView = (0 === strcasecmp('VIEW', $row->table_type));
-//            $schemaName = isset($row['TABLE_SCHEMA']) ? $row['TABLE_SCHEMA'] : '';
-//            $tableName = isset($row['TABLE_NAME']) ? $row['TABLE_NAME'] : '';
-//            $isView = (0 === strcasecmp('VIEW', $row['TABLE_TYPE']));
+            $row = array_change_key_case((array)$row, CASE_UPPER);
+            $schemaName = array_get($row, 'TABLE_SCHEMA', '');
+            $tableName = array_get($row, 'TABLE_NAME', '');
+            $isView = (0 === strcasecmp('VIEW', array_get($row, 'TABLE_TYPE', '')));
             if ($addSchema) {
                 $name = $schemaName . '.' . $tableName;
                 $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
