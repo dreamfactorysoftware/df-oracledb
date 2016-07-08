@@ -1,10 +1,14 @@
 <?php
 namespace DreamFactory\Core\Oracle\Database\Schema;
 
-use DreamFactory\Core\Database\DataReader;
 use DreamFactory\Core\Database\Schema\ColumnSchema;
-use DreamFactory\Core\Database\Schema\Schema;
+use DreamFactory\Core\Database\Schema\FunctionSchema;
+use DreamFactory\Core\Database\Schema\ParameterSchema;
+use DreamFactory\Core\Database\Schema\ProcedureSchema;
+use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
+use DreamFactory\Core\Database\Schema\Schema;
+use DreamFactory\Core\Enums\DbSimpleTypes;
 
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
@@ -28,7 +32,7 @@ class OracleSchema extends Schema
         switch ($type) {
             // some types need massaging, some need other required properties
             case 'pk':
-            case ColumnSchema::TYPE_ID:
+            case DbSimpleTypes::TYPE_ID:
                 $info['type'] = 'number';
                 $info['type_extras'] = '(10)';
                 $info['allow_null'] = false;
@@ -37,15 +41,15 @@ class OracleSchema extends Schema
                 break;
 
             case 'fk':
-            case ColumnSchema::TYPE_REF:
+            case DbSimpleTypes::TYPE_REF:
                 $info['type'] = 'number';
                 $info['type_extras'] = '(10)';
                 $info['is_foreign_key'] = true;
                 // check foreign tables
                 break;
 
-            case ColumnSchema::TYPE_TIMESTAMP_ON_CREATE:
-            case ColumnSchema::TYPE_TIMESTAMP_ON_UPDATE:
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
                 $info['type'] = 'timestamp';
                 $default = (isset($info['default'])) ? $info['default'] : null;
                 if (!isset($default)) {
@@ -55,32 +59,32 @@ class OracleSchema extends Schema
                 }
                 break;
 
-            case ColumnSchema::TYPE_USER_ID:
-            case ColumnSchema::TYPE_USER_ID_ON_CREATE:
-            case ColumnSchema::TYPE_USER_ID_ON_UPDATE:
+            case DbSimpleTypes::TYPE_USER_ID:
+            case DbSimpleTypes::TYPE_USER_ID_ON_CREATE:
+            case DbSimpleTypes::TYPE_USER_ID_ON_UPDATE:
                 $info['type'] = 'number';
                 $info['type_extras'] = '(10)';
                 break;
 
-            case ColumnSchema::TYPE_INTEGER:
+            case DbSimpleTypes::TYPE_INTEGER:
                 $info['type'] = 'number';
                 $info['type_extras'] = '(10)';
                 break;
-            case 'float':
+            case DbSimpleTypes::TYPE_FLOAT:
                 $info['type'] = 'BINARY_FLOAT';
                 break;
-            case 'double':
+            case DbSimpleTypes::TYPE_DOUBLE:
                 $info['type'] = 'BINARY_DOUBLE';
                 break;
-            case 'decimal':
+            case DbSimpleTypes::TYPE_DECIMAL:
                 $info['type'] = 'NUMBER';
                 break;
-            case 'datetime':
-            case 'time':
+            case DbSimpleTypes::TYPE_DATETIME:
+            case DbSimpleTypes::TYPE_TIME:
                 $info['type'] = 'TIMESTAMP';
                 break;
 
-            case ColumnSchema::TYPE_BOOLEAN:
+            case DbSimpleTypes::TYPE_BOOLEAN:
                 $info['type'] = 'number';
                 $info['type_extras'] = '(1)';
                 $default = (isset($info['default'])) ? $info['default'] : null;
@@ -90,7 +94,7 @@ class OracleSchema extends Schema
                 }
                 break;
 
-            case ColumnSchema::TYPE_MONEY:
+            case DbSimpleTypes::TYPE_MONEY:
                 $info['type'] = 'number';
                 $info['type_extras'] = '(19,4)';
                 $default = (isset($info['default'])) ? $info['default'] : null;
@@ -99,7 +103,7 @@ class OracleSchema extends Schema
                 }
                 break;
 
-            case ColumnSchema::TYPE_STRING:
+            case DbSimpleTypes::TYPE_STRING:
                 $fixed =
                     (isset($info['fixed_length'])) ? filter_var($info['fixed_length'], FILTER_VALIDATE_BOOLEAN) : false;
                 $national =
@@ -114,7 +118,7 @@ class OracleSchema extends Schema
                 }
                 break;
 
-            case ColumnSchema::TYPE_TEXT:
+            case DbSimpleTypes::TYPE_TEXT:
                 $national =
                     (isset($info['supports_multibyte'])) ? filter_var($info['supports_multibyte'],
                         FILTER_VALIDATE_BOOLEAN) : false;
@@ -125,7 +129,7 @@ class OracleSchema extends Schema
                 }
                 break;
 
-            case ColumnSchema::TYPE_BINARY:
+            case DbSimpleTypes::TYPE_BINARY:
                 $fixed =
                     (isset($info['fixed_length'])) ? filter_var($info['fixed_length'], FILTER_VALIDATE_BOOLEAN) : false;
                 $info['type'] = ($fixed) ? 'blob' : 'varbinary';
@@ -345,12 +349,13 @@ EOD;
 
                 $trig = $this->connection->select($sql);
                 if (!empty($trig[0])) {
+                    $row = array_change_key_case((array)$trig[0], CASE_UPPER);
                     $c->autoIncrement = true;
-                    $seq = stristr($trig[0]->trigger_body, '.nextval', true);
+                    $seq = stristr(array_get($row, 'TRIGGER_BODY', ''), '.nextval', true);
                     $seq = substr($seq, strrpos($seq, ' ') + 1);
                     $table->sequenceName = $c->name; //$seq;
-                    if (ColumnSchema::TYPE_INTEGER === $c->type) {
-                        $c->type = ColumnSchema::TYPE_ID;
+                    if (DbSimpleTypes::TYPE_INTEGER === $c->type) {
+                        $c->type = DbSimpleTypes::TYPE_ID;
                     }
                 }
             }
@@ -434,7 +439,7 @@ SQL;
      */
     protected function findTableNames($schema = '', $include_views = true)
     {
-        $schemas = $this->connection->getDoctrineSchemaManager()->listTableNames();
+//        $schemas = $this->connection->getDoctrineSchemaManager()->listTableNames();
         if ($include_views) {
             $condition = "object_type in ('TABLE','VIEW')";
         } else {
@@ -458,12 +463,10 @@ EOD;
 
         $names = [];
         foreach ($rows as $row) {
-            $schemaName = $row->table_schema;
-            $tableName = $row->table_name;
-            $isView = (0 === strcasecmp('VIEW', $row->table_type));
-//            $schemaName = isset($row['TABLE_SCHEMA']) ? $row['TABLE_SCHEMA'] : '';
-//            $tableName = isset($row['TABLE_NAME']) ? $row['TABLE_NAME'] : '';
-//            $isView = (0 === strcasecmp('VIEW', $row['TABLE_TYPE']));
+            $row = array_change_key_case((array)$row, CASE_UPPER);
+            $schemaName = array_get($row, 'TABLE_SCHEMA', '');
+            $tableName = array_get($row, 'TABLE_NAME', '');
+            $isView = (0 === strcasecmp('VIEW', array_get($row, 'TABLE_TYPE', '')));
             if ($addSchema) {
                 $name = $schemaName . '.' . $tableName;
                 $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
@@ -480,13 +483,92 @@ EOD;
     }
 
     /**
+     * @inheritdoc
+     */
+    protected function findRoutineNames($type, $schema = '')
+    {
+        $bindings = [':type' => $type];
+        $where = 'OBJECT_TYPE = :type';
+        if (!empty($schema)) {
+            $where .= ' AND OWNER = :schema';
+            $bindings[':schema'] = $schema;
+        }
+
+//SELECT OBJECT_NAME,PROCEDURE_NAME FROM SYS.ALL_PROCEDURES WHERE OBJECT_TYPE = 'PROCEDURE'";
+        $sql = <<<MYSQL
+SELECT OBJECT_NAME FROM all_objects WHERE {$where}
+MYSQL;
+
+        $rows = $this->selectColumn($sql, $bindings);
+
+        $defaultSchema = $this->getDefaultSchema();
+        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
+
+        $names = [];
+        foreach ($rows as $name) {
+            $schemaName = $schema;
+            if ($addSchema) {
+                $publicName = $schemaName . '.' . $name;
+                $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($name);;
+            } else {
+                $publicName = $name;
+                $rawName = $this->quoteTableName($name);
+            }
+            $settings = compact('schemaName', 'name', 'publicName', 'rawName');
+            $names[strtolower($publicName)] =
+                ('PROCEDURE' === $type) ? new ProcedureSchema($settings) : new FunctionSchema($settings);
+        }
+
+        return $names;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function loadParameters(&$holder)
+    {
+        $sql = <<<MYSQL
+SELECT 
+    argument_name, position, sequence, data_type, in_out, data_length, data_precision, data_scale, default_value, data_level, char_length
+FROM 
+    all_arguments
+WHERE 
+    OBJECT_NAME = '{$holder->name}' AND OWNER = '{$holder->schemaName}' AND DATA_LEVEL = '0'
+MYSQL;
+
+        $rows = $this->connection->select($sql);
+        foreach ($rows as $row) {
+            $row = array_change_key_case((array)$row, CASE_UPPER);
+            $name = array_get($row, 'ARGUMENT_NAME');
+            $pos = intval(array_get($row, 'POSITION'));
+            $simpleType = static::extractSimpleType(array_get($row, 'DATA_TYPE'));
+            if ((0 === $pos) || is_null($name)) {
+                $holder->returnType = $simpleType;
+            } else {
+                $holder->addParameter(new ParameterSchema([
+                        'name'          => $name,
+                        'position'      => $pos,
+                        'param_type'    => str_replace('/', '', array_get($row, 'IN_OUT')),
+                        'type'          => $simpleType,
+                        'db_type'       => array_get($row, 'DATA_TYPE'),
+                        'length'        => (isset($row['DATA_LENGTH']) ? intval(array_get($row, 'DATA_LENGTH')) : null),
+                        'precision'     => (isset($row['DATA_PRECISION']) ? intval(array_get($row, 'DATA_PRECISION'))
+                            : null),
+                        'scale'         => (isset($row['DATA_SCALE']) ? intval(array_get($row, 'DATA_SCALE')) : null),
+                        'default_value' => array_get($row, 'DEFAULT_VALUE'),
+                    ]
+                ));
+            }
+        }
+    }
+
+    /**
      * Builds a SQL statement for renaming a DB table.
      *
      * @param string $table   the table to be renamed. The name will be properly quoted by the method.
      * @param string $newName the new table name. The name will be properly quoted by the method.
      *
      * @return string the SQL statement for renaming a DB table.
-     * @since 1.1.6
      */
     public function renameTable($table, $newName)
     {
@@ -625,71 +707,6 @@ EOD;
     }
 
     /**
-     * Returns all stored procedure names in the database.
-     *
-     * @param string $schema the schema of the stored procedures. Defaults to empty string, meaning the current or
-     *                       default schema. If not empty, the returned stored procedure names will be prefixed with
-     *                       the schema name.
-     *
-     * @return array all stored procedure names in the database.
-     */
-    protected function findProcedureNames($schema = '')
-    {
-        return $this->findRoutines('procedure', $schema);
-    }
-
-    /**
-     * Returns all stored function names in the database.
-     *
-     * @param string $schema the schema of the stored function. Defaults to empty string, meaning the current or
-     *                       default schema. If not empty, the returned stored function names will be prefixed with the
-     *                       schema name.
-     *
-     * @return array all stored function names in the database.
-     */
-    protected function findFunctionNames($schema = '')
-    {
-        return $this->findRoutines('function', $schema);
-    }
-
-    /**
-     * Returns all routines in the database.
-     *
-     * @param string $type   "procedure" or "function"
-     * @param string $schema the schema of the routine. Defaults to empty string, meaning the current or
-     *                       default schema. If not empty, the returned stored function names will be prefixed with the
-     *                       schema name.
-     *
-     * @throws \InvalidArgumentException
-     * @return array all stored function names in the database.
-     */
-    protected function findRoutines($type, $schema = '')
-    {
-        $defaultSchema = $this->getDefaultSchema();
-        $type = trim(strtoupper($type));
-
-        if ($type != 'PROCEDURE' && $type != 'FUNCTION') {
-            throw new \InvalidArgumentException('The type "' . $type . '" is invalid.');
-        }
-
-        $select =
-            (empty($schema) || ($defaultSchema == $schema)) ? 'OBJECT_NAME' : "CONCAT(CONCAT(OWNER,'.'),OBJECT_NAME)";
-        $schema = !empty($schema) ? " AND OWNER = '" . $schema . "'" : null;
-
-        $sql = <<<MYSQL
-SELECT
-    {$select}
-FROM
-    all_objects
-WHERE
-    OBJECT_TYPE = :routine_type
-    {$schema}
-MYSQL;
-
-        return $this->selectColumn($sql, [':routine_type' => $type]);
-    }
-
-    /**
      * Builds and executes a SQL statement for dropping a DB table.
      *
      * @param string $table the table to be dropped. The name will be properly quoted by the method.
@@ -702,7 +719,7 @@ MYSQL;
         $result = parent::dropTable($table);
 
         $sequence = '"' . strtoupper($table) . '_SEQ"';
-        $sql = <<<SQL
+        $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP SEQUENCE {$sequence}';
 EXCEPTION
@@ -711,11 +728,11 @@ EXCEPTION
       RAISE;
     END IF;
 END;
-SQL;
+MYSQL;
         $this->connection->statement($sql);
 
         $trigger = '"' . strtoupper($table) . '_TRG"';
-        $sql = <<<SQL
+        $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP TRIGGER {$trigger}';
 EXCEPTION
@@ -724,7 +741,7 @@ EXCEPTION
       RAISE;
     END IF;
 END;
-SQL;
+MYSQL;
         $this->connection->statement($sql);
 
         return $result;
@@ -733,7 +750,7 @@ SQL;
     public function getPrimaryKeyCommands($table, $column)
     {
         // pre 12c versions need sequences and trigger to accomplish autoincrement
-        $sequence = '"'.strtoupper($table) . '_SEQ"';
+        $sequence = '"' . strtoupper($table) . '_SEQ"';
         $trigTable = $this->quoteTableName($table);
         $trigField = $this->quoteColumnName($column);
 
@@ -764,7 +781,8 @@ SQL;
     /**
      * Extracts the PHP type from DB type.
      *
-     * @param string $dbType DB type
+     * @param ColumnSchema $column
+     * @param string       $dbType DB type
      */
     public function extractType(ColumnSchema &$column, $dbType)
     {
@@ -793,7 +811,8 @@ SQL;
      * Extracts the default value for the column.
      * The value is typecasted to correct PHP type.
      *
-     * @param mixed $defaultValue the default value obtained from metadata
+     * @param ColumnSchema $field
+     * @param mixed        $defaultValue the default value obtained from metadata
      */
     public function extractDefault(ColumnSchema &$field, $defaultValue)
     {
@@ -805,111 +824,84 @@ SQL;
     }
 
     /**
-     * @param string $name
-     * @param array  $params
-     *
-     * @return mixed
-     * @throws \Exception
+     * @inheritdoc
      */
-    public function callProcedure($name, &$params)
+    protected function getProcedureStatement(RoutineSchema $routine, array $param_schemas, array &$values)
     {
-        $name = $this->quoteTableName($name);
-        $paramStr = '';
-        foreach ($params as $key => $param) {
-            $pName = (isset($param['name']) && !empty($param['name'])) ? $param['name'] : "p$key";
+        $paramStr = $this->getRoutineParamString($param_schemas, $values);
 
-            if (!empty($paramStr)) {
-                $paramStr .= ', ';
-            }
-
-//            switch ( strtoupper( strval( isset($param['param_type']) ? $param['param_type'] : 'IN' ) ) )
-//            {
-//                case 'INOUT':
-//                case 'OUT':
-//                default:
-            $paramStr .= ":$pName";
-//                    break;
-//            }
-        }
-
-        $sql = "BEGIN $name($paramStr); END;";
-        /** @type \PDOStatement $statement */
-        $statement = $this->connection->getPdo()->prepare($sql);
-        // do binding
-        foreach ($params as $key => $param) {
-            $pName = (isset($param['name']) && !empty($param['name'])) ? $param['name'] : "p$key";
-
-//            switch ( strtoupper( strval( isset($param['param_type']) ? $param['param_type'] : 'IN' ) ) )
-//            {
-//                case 'IN':
-//                case 'INOUT':
-//                case 'OUT':
-//                default:
-            $rType = (isset($param['type'])) ? $param['type'] : 'string';
-            $rLength = (isset($param['length'])) ? $param['length'] : 256;
-            $pdoType = $this->getPdoType($rType);
-            $this->bindParam($statement, ":$pName", $params[$key]['value'], $pdoType | \PDO::PARAM_INPUT_OUTPUT,
-                $rLength);
-//                    break;
-//            }
-        }
-
-        // Oracle stored procedures don't return result sets directly, must use OUT parameter.
-        try {
-            $statement->execute();
-        } catch (\Exception $e) {
-            $errorInfo = $e instanceof \PDOException ? $e : null;
-            $message = $e->getMessage();
-            throw new \Exception($message, (int)$e->getCode(), $errorInfo);
-        }
-
-        return null;
+        return "BEGIN {$routine->rawName}($paramStr); END;";
     }
 
     /**
-     * @param string $name
-     * @param array  $params
-     *
-     * @throws \Exception
-     * @return mixed
+     * @inheritdoc
      */
-    public function callFunction($name, &$params)
+    protected function getFunctionStatement(RoutineSchema $routine, array $param_schemas, array &$values)
     {
-        $name = $this->quoteTableName($name);
-        $bindings = [];
-        foreach ($params as $key => $param) {
-            $pName = (isset($param['name']) && !empty($param['name'])) ? ':' . $param['name'] : ":p$key";
-            $pValue = isset($param['value']) ? $param['value'] : null;
+        return parent::getFunctionStatement($routine, $param_schemas, $values) . ' FROM DUAL';
+    }
 
-            $bindings[$pName] = $pValue;
+    /**
+     * @inheritdoc
+     */
+    protected function doRoutineBinding($statement, array $paramSchemas, array &$values)
+    {
+        /**
+         * @type string          $key
+         * @type ParameterSchema $paramSchema
+         */
+        foreach ($paramSchemas as $key => $paramSchema) {
+            switch ($paramSchema->paramType) {
+                case 'IN':
+                    $this->bindValue($statement, ':' . $paramSchema->name, array_get($values, $key));
+                    break;
+                case 'INOUT':
+                case 'OUT':
+                    if (0 === strcasecmp('REF CURSOR', $paramSchema->dbType)) {
+                        $pdoType = \PDO::PARAM_STMT;
+                        $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
+                            $pdoType | \PDO::PARAM_INPUT_OUTPUT, -1, OCI_B_CURSOR);
+                    } else {
+                        $pdoType = $this->getPdoType($paramSchema->type);
+                        $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
+                            $pdoType | \PDO::PARAM_INPUT_OUTPUT, $paramSchema->length);
+                    }
+                    break;
+            }
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function postProcedureCall(array $param_schemas, array &$values)
+    {
+        foreach ($param_schemas as $key => $paramSchema) {
+            switch ($paramSchema->paramType) {
+                case 'INOUT':
+                case 'OUT':
+                    if ((0 === strcasecmp('REF CURSOR', $paramSchema->dbType)) && isset($values[$key])) {
+                        oci_execute($values[$key], OCI_DEFAULT);
+                        oci_fetch_all($values[$key], $array, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_ASSOC );
+                        oci_free_cursor($values[$key]);
+                        $values[$key] = $array;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function handleRoutineException(\Exception $ex)
+    {
+        if (false !== stripos($ex->getMessage(), 'has not been implemented')) {
+            return true;
         }
 
-        $paramStr = implode(',', array_keys($bindings));
-        $sql = "SELECT $name($paramStr) FROM DUAL";
-        /** @type \PDOStatement $statement */
-        $statement = $this->connection->getPdo()->prepare($sql);
-
-        // do binding
-        $this->bindValues($statement, $bindings);
-
-        // support multiple result sets
-        try {
-            $statement->execute();
-            $reader = new DataReader($statement);
-        } catch (\Exception $e) {
-            $errorInfo = $e instanceof \PDOException ? $e : null;
-            $message = $e->getMessage();
-            throw new \Exception($message, (int)$e->getCode(), $errorInfo);
-        }
-        $result = $reader->readAll();
-        if ($reader->nextResult()) {
-            // more data coming, make room
-            $result = [$result];
-            do {
-                $result[] = $reader->readAll();
-            } while ($reader->nextResult());
-        }
-
-        return $result;
+        return false;
     }
 }
