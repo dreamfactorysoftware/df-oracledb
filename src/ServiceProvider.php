@@ -1,6 +1,7 @@
 <?php
 namespace DreamFactory\Core\Oracle;
 
+use DreamFactory\Core\Components\ServiceDocBuilder;
 use DreamFactory\Core\Database\DbSchemaExtensions;
 use DreamFactory\Core\Enums\ServiceTypeGroups;
 use DreamFactory\Core\Oracle\Database\Connectors\OracleConnector;
@@ -14,27 +15,33 @@ use Illuminate\Database\DatabaseManager;
 
 class ServiceProvider extends \Illuminate\Support\ServiceProvider
 {
+    use ServiceDocBuilder;
+
     public function register()
     {
         // Add our database drivers.
         $this->app->resolving('db', function (DatabaseManager $db) {
             $db->extend('oracle', function ($config) {
-                $connector  = new OracleConnector();
+                $connector = new OracleConnector();
                 $connection = $connector->connect($config);
+
                 return new OracleConnection($connection, $config["database"], $config["prefix"], $config);
             });
         });
 
         // Add our service types.
-        $this->app->resolving('df.service', function (ServiceManager $df){
+        $this->app->resolving('df.service', function (ServiceManager $df) {
             $df->addType(
                 new ServiceType([
-                    'name'           => 'oracle',
-                    'label'          => 'Oracle',
-                    'description'    => 'Database service supporting SQL connections.',
-                    'group'          => ServiceTypeGroups::DATABASE,
-                    'config_handler' => OracleDbConfig::class,
-                    'factory'        => function ($config){
+                    'name'            => 'oracle',
+                    'label'           => 'Oracle',
+                    'description'     => 'Database service supporting SQL connections.',
+                    'group'           => ServiceTypeGroups::DATABASE,
+                    'config_handler'  => OracleDbConfig::class,
+                    'default_api_doc' => function ($service) {
+                        return $this->buildServiceDoc($service->id, OracleDb::getApiDocInfo($service));
+                    },
+                    'factory'         => function ($config) {
                         return new OracleDb($config);
                     },
                 ])
@@ -42,8 +49,8 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
         });
 
         // Add our database extensions.
-        $this->app->resolving('db.schema', function (DbSchemaExtensions $db){
-            $db->extend('oracle', function ($connection){
+        $this->app->resolving('db.schema', function (DbSchemaExtensions $db) {
+            $db->extend('oracle', function ($connection) {
                 return new OracleSchema($connection);
             });
         });
