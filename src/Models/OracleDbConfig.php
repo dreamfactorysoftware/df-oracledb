@@ -24,6 +24,13 @@ class OracleDbConfig extends SqlDbConfig
         return 'AL32UTF8';
     }
 
+    protected function getConnectionFields()
+    {
+        $fields = parent::getConnectionFields();
+
+        return array_merge($fields, ['charset', 'tns', 'protocol', 'service_name']);
+    }
+
     public static function getDefaultConnectionInfo()
     {
         $defaults = parent::getDefaultConnectionInfo();
