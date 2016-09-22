@@ -1,6 +1,7 @@
 <?php
 namespace DreamFactory\Core\Oracle\Models;
 
+use DreamFactory\Core\Exceptions\BadRequestException;
 use DreamFactory\Core\SqlDb\Models\SqlDbConfig;
 
 /**
@@ -28,12 +29,37 @@ class OracleDbConfig extends SqlDbConfig
     {
         $fields = parent::getConnectionFields();
 
-        return array_merge($fields, ['charset', 'tns', 'protocol', 'service_name']);
+        return array_merge($fields, ['service_name', 'tns', 'charset', 'protocol']);
+    }
+
+    public static function validateConfig($config, $create = true)
+    {
+        if (!empty(array_get($config, 'tns'))) {
+            return true; // overrides everything else
+        }
+
+        if ($create) {
+            if (empty(array_get($config, 'host'))) {
+                throw new BadRequestException("If not using TNS, connection information must contain host name.");
+            }
+
+            if (empty(array_get($config, 'database')) && empty(array_get($config, 'service_name'))) {
+                throw new BadRequestException("If not using TNS, connection information must contain either database (SID) or service_name (SERVICE_NAME).");
+            }
+        }
+
+        return true;
     }
 
     public static function getDefaultConnectionInfo()
     {
         $defaults = parent::getDefaultConnectionInfo();
+        $defaults[] = [
+            'name'        => 'service_name',
+            'label'       => 'Service Name',
+            'type'        => 'string',
+            'description' => 'Optional service name if database (i.e. SID) is not set.'
+        ];
         $defaults[] = [
             'name'        => 'tns',
             'label'       => 'TNS Full Connection String',
@@ -51,12 +77,6 @@ class OracleDbConfig extends SqlDbConfig
             'label'       => 'Character Set',
             'type'        => 'string',
             'description' => 'The character set to use for this connection, i.e. ' . static::getDefaultCharset()
-        ];
-        $defaults[] = [
-            'name'        => 'service_name',
-            'label'       => 'Service Name',
-            'type'        => 'string',
-            'description' => 'Optional service name if database (i.e. SID) is not set.'
         ];
 
         return $defaults;
