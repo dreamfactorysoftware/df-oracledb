@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 
+## [0.4.1] - 2016-09-21
+### Fixed
+- Fix configuration validation for TNS usage and database versus service_name.
+
 ## [0.4.0] - 2016-08-21
 ### Changed
 - General cleanup from declaration changes in df-core for service doc and providers
@@ -24,6 +28,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.3.0 - 2016-05-27
 First official release working with the new [df-core](https://github.com/dreamfactorysoftware/df-core) library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.4.1...HEAD
+[0.4.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.3.0...0.3.1
