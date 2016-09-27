@@ -2,7 +2,6 @@
 
 namespace DreamFactory\Core\Oracle\Database\Connectors;
 
-use Illuminate\Database\Connectors;
 use Illuminate\Database\Connectors\Connector;
 use Illuminate\Database\Connectors\ConnectorInterface;
 use PDO;
