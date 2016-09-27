@@ -30,7 +30,7 @@
   },
   "require":     {
     "dreamfactory/df-core":       "~0.4.0",
-    "yajra/laravel-pdo-via-oci8": "1.1.*"
+    "yajra/laravel-pdo-via-oci8": "1.*"
   },
   "autoload":    {
     "psr-4": {
