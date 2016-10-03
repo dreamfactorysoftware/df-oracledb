@@ -25,6 +25,13 @@ class OracleDbConfig extends SqlDbConfig
         return 'AL32UTF8';
     }
 
+    protected function getConnectionFields()
+    {
+        $fields = parent::getConnectionFields();
+
+        return array_merge($fields, ['service_name', 'tns', 'charset', 'protocol']);
+    }
+
     public static function validateConfig($config, $create = true)
     {
         if (!empty(array_get($config, 'tns'))) {
