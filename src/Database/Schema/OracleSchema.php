@@ -518,7 +518,7 @@ WHERE p.OBJECT_TYPE = 'PACKAGE' AND p.PROCEDURE_NAME IS NOT NULL {$where}
 MYSQL;
 
         $rows2 = $this->connection->select($sql, $bindings);
-        $rows += $rows2;
+        $rows = array_merge($rows, $rows2);
 
         $defaultSchema = $this->getDefaultSchema();
         $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
