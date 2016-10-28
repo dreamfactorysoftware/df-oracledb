@@ -444,14 +444,11 @@ SQL;
      */
     protected function findTableNames($schema = '', $include_views = true)
     {
-//        $schemas = $this->connection->getDoctrineSchemaManager()->listTableNames();
         if ($include_views) {
             $condition = "object_type in ('TABLE','VIEW')";
         } else {
             $condition = "object_type = 'TABLE'";
         }
-
-//SELECT table_name, '{$schema}' as table_schema FROM user_tables
 
         $sql = <<<EOD
 SELECT object_name as table_name, owner as table_schema, object_type as table_type FROM all_objects WHERE $condition
@@ -499,25 +496,49 @@ EOD;
             $bindings[':schema'] = $schema;
         }
 
-//SELECT OBJECT_NAME,PROCEDURE_NAME FROM SYS.ALL_PROCEDURES WHERE OBJECT_TYPE = 'PROCEDURE'";
         $sql = <<<MYSQL
-SELECT OBJECT_NAME FROM all_objects WHERE {$where}
+SELECT OBJECT_NAME, PROCEDURE_NAME FROM all_procedures WHERE {$where}
 MYSQL;
 
-        $rows = $this->selectColumn($sql, $bindings);
+        $rows = $this->connection->select($sql, $bindings);
+
+        // Package support
+        $bindings = [];
+        $where = '';
+        if (!empty($schema)) {
+            $where .= ' AND p.OWNER = :schema';
+            $bindings[':schema'] = $schema;
+        }
+        $argCheck = ('FUNCTION' === $type) ? 'a.ARGUMENT_NAME IS NULL' : 'NOT (a.ARGUMENT_NAME IS NULL)';
+
+        $sql = <<<MYSQL
+SELECT DISTINCT p.OBJECT_NAME, p.PROCEDURE_NAME FROM all_procedures p
+JOIN all_arguments a ON (a.PACKAGE_NAME = p.OBJECT_NAME OR a.OBJECT_NAME = p.PROCEDURE_NAME) AND a.OWNER = p.OWNER AND a.DATA_LEVEL = '0' AND {$argCheck}
+WHERE p.OBJECT_TYPE = 'PACKAGE' AND p.PROCEDURE_NAME IS NOT NULL {$where}
+MYSQL;
+
+        $rows2 = $this->connection->select($sql, $bindings);
+        $rows += $rows2;
 
         $defaultSchema = $this->getDefaultSchema();
         $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
 
         $names = [];
-        foreach ($rows as $name) {
+        foreach ($rows as $row) {
+            $row = array_change_key_case((array)$row, CASE_UPPER);
+            $name = array_get($row, 'OBJECT_NAME');
             $schemaName = $schema;
             if ($addSchema) {
                 $publicName = $schemaName . '.' . $name;
-                $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($name);;
+                $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($name);
             } else {
                 $publicName = $name;
                 $rawName = $this->quoteTableName($name);
+            }
+            if (!empty($addPackage = array_get($row, 'PROCEDURE_NAME'))) {
+                $name .= '.' . $addPackage;
+                $publicName .= '.' . $addPackage;
+                $rawName .= '.' . $this->quoteTableName($addPackage);
             }
             $settings = compact('schemaName', 'name', 'publicName', 'rawName');
             $names[strtolower($publicName)] =
@@ -533,15 +554,20 @@ MYSQL;
     protected function loadParameters(&$holder)
     {
         $sql = <<<MYSQL
-SELECT 
-    argument_name, position, sequence, data_type, in_out, data_length, data_precision, data_scale, default_value, data_level, char_length
-FROM 
-    all_arguments
-WHERE 
-    OBJECT_NAME = '{$holder->name}' AND OWNER = '{$holder->schemaName}' AND DATA_LEVEL = '0'
+SELECT argument_name, position, sequence, data_type, in_out, data_length, data_precision, data_scale, 
+ default_value, data_level, char_length
+FROM all_arguments
+WHERE OBJECT_NAME = :object AND OWNER = :schema AND DATA_LEVEL = '0'
 MYSQL;
 
-        $rows = $this->connection->select($sql);
+        $bindings = [':object' => $holder->name, ':schema' => $holder->schemaName];
+        if (false !== $pos = strpos($holder->name, '.')) {
+            $sql .= ' AND PACKAGE_NAME = :package';
+            $bindings[':object'] = substr($holder->name, $pos + 1);
+            $bindings[':package'] = substr($holder->name, 0, $pos);
+        }
+
+        $rows = $this->connection->select($sql, $bindings);
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
             $name = array_get($row, 'ARGUMENT_NAME');
