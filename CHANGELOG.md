@@ -9,7 +9,16 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 
+## [0.5.2] - 2016-10-28
+### Changed
+- DF-880 Support for procedures and functions declared in packages
+
+## [0.5.1] - 2016-10-28
+### Changed
+- OCI8 does not support FETCH_NAMED, roll back to FETCH_ASSOC
+
 ## [0.5.0] - 2016-10-03
+### Changed
 - Update to latest df-core and df-sqldb changes
 
 ## [0.4.1] - 2016-09-21
@@ -31,7 +40,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.3.0 - 2016-05-27
 First official release working with the new [df-core](https://github.com/dreamfactorysoftware/df-core) library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.1...0.5.2
+[0.5.1]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.3.1...0.4.0
