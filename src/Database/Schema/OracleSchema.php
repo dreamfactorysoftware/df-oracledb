@@ -16,6 +16,11 @@ use DreamFactory\Core\Enums\DbSimpleTypes;
 class OracleSchema extends Schema
 {
     /**
+     * Default fetch mode, base class uses NAMED which OCI8 does not support
+     */
+    const ROUTINE_FETCH_MODE = \PDO::FETCH_ASSOC;
+
+    /**
      * @var array the abstract column types mapped to physical column types.
      */
     public $columnTypes = [
