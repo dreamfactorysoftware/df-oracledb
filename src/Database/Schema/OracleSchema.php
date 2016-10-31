@@ -272,26 +272,13 @@ class OracleSchema extends Schema
     }
 
     /**
-     * @inheritdoc
-     */
-    protected function loadTable(TableSchema $table)
-    {
-        if (!$this->findColumns($table)) {
-            return null;
-        }
-        $this->findConstraints($table);
-
-        return $table;
-    }
-
-    /**
      * Collects the table column metadata.
      *
      * @param TableSchema $table the table metadata
      *
      * @return boolean whether the table exists in the database
      */
-    protected function findColumns($table)
+    protected function findColumns(TableSchema $table)
     {
         $schemaName = $table->schemaName;
         $tableName = $table->tableName;
@@ -394,11 +381,9 @@ EOD;
     }
 
     /**
-     * Collects the primary and foreign key column details for the given table.
-     *
-     * @param TableSchema $table the table metadata
+     * @inheritdoc
      */
-    protected function findConstraints($table)
+    protected function findTableReferences()
     {
         $sql = <<<EOD
 		SELECT D.constraint_type, C.position, D.r_constraint_name,
@@ -415,9 +400,8 @@ EOD;
         WHERE D.constraint_type = 'R'
         ORDER BY D.constraint_name, C.position
 EOD;
-        $constraints = $this->connection->select($sql);
 
-        $this->buildTableRelations($table, $constraints);
+        return $this->connection->select($sql);
     }
 
     protected function findSchemaNames()
@@ -909,7 +893,7 @@ SQL;
                 case 'OUT':
                     if ((0 === strcasecmp('REF CURSOR', $paramSchema->dbType)) && isset($values[$key])) {
                         oci_execute($values[$key], OCI_DEFAULT);
-                        oci_fetch_all($values[$key], $array, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_ASSOC );
+                        oci_fetch_all($values[$key], $array, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_ASSOC);
                         oci_free_cursor($values[$key]);
                         $values[$key] = $array;
                     }
