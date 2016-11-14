@@ -8,6 +8,7 @@ use DreamFactory\Core\Database\Schema\ProcedureSchema;
 use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Database\Schema\Schema;
+use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 
 /**
@@ -15,6 +16,11 @@ use DreamFactory\Core\Enums\DbSimpleTypes;
  */
 class OracleSchema extends Schema
 {
+    /**
+     * Underlying database provides field-level schema, i.e. SQL (true) vs NoSQL (false)
+     */
+    const PROVIDES_FIELD_SCHEMA = true;
+
     /**
      * Default fetch mode, base class uses NAMED which OCI8 does not support
      */
@@ -29,6 +35,19 @@ class OracleSchema extends Schema
         // new no sequence identity setting from 12c
         //        'pk' => 'NUMBER GENERATED ALWAYS AS IDENTITY',
     ];
+
+    /**
+     * @inheritdoc
+     */
+    public function getSupportedResourceTypes()
+    {
+        return [
+            DbResourceTypes::TYPE_TABLE,
+            DbResourceTypes::TYPE_VIEW,
+            DbResourceTypes::TYPE_PROCEDURE,
+            DbResourceTypes::TYPE_FUNCTION
+        ];
+    }
 
     protected function translateSimpleColumnTypes(array &$info)
     {
@@ -272,17 +291,11 @@ class OracleSchema extends Schema
     }
 
     /**
-     * Collects the table column metadata.
-     *
-     * @param TableSchema $table the table metadata
-     *
-     * @return boolean whether the table exists in the database
+     * @inheritdoc
      */
     protected function findColumns(TableSchema $table)
     {
-        $schemaName = $table->schemaName;
-        $tableName = $table->tableName;
-
+//        $params = [$table->tableName, $table->schemaName];
         $sql = <<<EOD
 SELECT a.column_name, a.data_type ||
     case
@@ -304,56 +317,35 @@ SELECT a.column_name, a.data_type ||
            and D.constraint_type = 'P') as Key,
     com.comments as column_comment
 FROM ALL_TAB_COLUMNS A
-inner join ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A.TABLE_NAME)
+INNER JOIN ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A.TABLE_NAME)
 LEFT JOIN user_col_comments com ON (A.table_name = com.table_name AND A.column_name = com.column_name)
-WHERE
-    a.owner = '{$schemaName}'
-	and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
-	and b.object_name = '{$tableName}'
+WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->tableName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
 ORDER by a.column_id
 EOD;
 
-        if (empty($columns = $this->connection->select($sql))) {
-            return false;
-        }
-
-        foreach ($columns as $column) {
-            $c = $this->createColumn(array_change_key_case((array)$column, CASE_UPPER));
-            $table->addColumn($c);
-            if ($c->isPrimaryKey) {
-                if ($table->primaryKey === null) {
-                    $table->primaryKey = $c->name;
-                } elseif (is_string($table->primaryKey)) {
-                    $table->primaryKey = [$table->primaryKey, $c->name];
-                } else {
-                    $table->primaryKey[] = $c->name;
-                }
-
-                // set defaults
-                $c->autoIncrement = false;
-                $table->sequenceName = '';
-
-                $sql = <<<EOD
+        if (!empty($columns = $this->connection->select($sql))) {
+            $sql = <<<EOD
 SELECT trigger_body FROM ALL_TRIGGERS
-WHERE table_owner = '{$schemaName}' and table_name = '{$tableName}'
+WHERE table_owner = '{$table->schemaName}' and table_name = '{$table->tableName}'
 and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
 EOD;
 
-                $trig = $this->connection->select($sql);
-                if (!empty($trig[0])) {
-                    $row = array_change_key_case((array)$trig[0], CASE_UPPER);
-                    $c->autoIncrement = true;
-                    $seq = stristr(array_get($row, 'TRIGGER_BODY', ''), '.nextval', true);
-                    $seq = substr($seq, strrpos($seq, ' ') + 1);
-                    $table->sequenceName = $c->name; //$seq;
-                    if (DbSimpleTypes::TYPE_INTEGER === $c->type) {
-                        $c->type = DbSimpleTypes::TYPE_ID;
+            $trig = $this->connection->select($sql);
+            if (!empty($trig[0])) {
+                $row = array_change_key_case((array)$trig[0], CASE_LOWER);
+                foreach ($columns as &$column) {
+                    $column = array_change_key_case((array)$column, CASE_LOWER);
+                    if ('P' === array_get($column, 'key')) {
+                        $column['auto_increment'] = true;
+                        $seq = stristr(array_get($row, 'trigger_body', ''), '.nextval', true);
+                        $seq = substr($seq, strrpos($seq, ' ') + 1);
+                        $column['sequence'] = $seq;
                     }
                 }
             }
         }
 
-        return true;
+        return $columns;
     }
 
     /**
@@ -365,17 +357,18 @@ EOD;
      */
     protected function createColumn($column)
     {
-        $c = new ColumnSchema(['name' => $column['COLUMN_NAME']]);
+        $c = new ColumnSchema(['name' => $column['column_name']]);
+        $c->autoIncrement = isset($column['auto_increment']) ? $column['auto_increment'] : false;
         $c->rawName = $this->quoteColumnName($c->name);
-        $c->allowNull = $column['NULLABLE'] === 'Y';
-        $c->isPrimaryKey = strpos($column['KEY'], 'P') !== false;
-        $c->dbType = $column['DATA_TYPE'];
-        $this->extractLimit($c, $column['DATA_TYPE']);
-        $c->fixedLength = $this->extractFixedLength($column['DATA_TYPE']);
-        $c->supportsMultibyte = $this->extractMultiByteSupport($column['DATA_TYPE']);
-        $this->extractType($c, $column['DATA_TYPE']);
-        $this->extractDefault($c, $column['DATA_DEFAULT']);
-        $c->comment = $column['COLUMN_COMMENT'] === null ? '' : $column['COLUMN_COMMENT'];
+        $c->allowNull = $column['nullable'] === 'Y';
+        $c->isPrimaryKey = strpos($column['key'], 'P') !== false;
+        $c->dbType = $column['data_type'];
+        $this->extractLimit($c, $c->dbType);
+        $c->fixedLength = $this->extractFixedLength($c->dbType);
+        $c->supportsMultibyte = $this->extractMultiByteSupport($c->dbType);
+        $this->extractType($c, $c->dbType);
+        $this->extractDefault($c, $column['data_default']);
+        $c->comment = $column['column_comment'] === null ? '' : $column['column_comment'];
 
         return $c;
     }
@@ -789,35 +782,46 @@ SQL;
         return $this->connection->raw('(CURRENT_TIMESTAMP)');
     }
 
-    /**
-     * Extracts the PHP type from DB type.
-     *
-     * @param ColumnSchema $column
-     * @param string       $dbType DB type
-     */
-    public function extractType(ColumnSchema &$column, $dbType)
+    public function parseValueForSet($value, $field_info)
     {
-        parent::extractType($column, $dbType);
-        if (strpos($dbType, 'FLOAT') !== false) {
-            $column->phpType = 'double';
+        switch ($field_info->type) {
+            case DbSimpleTypes::TYPE_BOOLEAN:
+                $value = (filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 1 : 0);
+                break;
         }
 
-        if (strpos($dbType, 'NUMBER') !== false || strpos($dbType, 'INTEGER') !== false) {
-            if (strpos($dbType, '(') && preg_match('/\((.*)\)/', $dbType, $matches)) {
-                $values = explode(',', $matches[1]);
-                if (isset($values[1]) and (((int)$values[1]) > 0)) {
-                    $column->phpType = 'double';
-                } else {
-                    $column->phpType = 'integer';
-                }
-            } else {
-                $column->phpType = 'double';
-            }
-        } else {
-            $column->phpType = 'string';
-        }
+        return $value;
     }
 
+//    /**
+//     * Extracts the PHP type from DB type.
+//     *
+//     * @param ColumnSchema $column
+//     * @param string       $dbType DB type
+//     */
+//    public function extractType(ColumnSchema &$column, $dbType)
+//    {
+//        parent::extractType($column, $dbType);
+//        if (strpos($dbType, 'FLOAT') !== false) {
+//            $column->phpType = 'double';
+//        }
+//
+//        if (strpos($dbType, 'NUMBER') !== false || strpos($dbType, 'INTEGER') !== false) {
+//            if (strpos($dbType, '(') && preg_match('/\((.*)\)/', $dbType, $matches)) {
+//                $values = explode(',', $matches[1]);
+//                if (isset($values[1]) and (((int)$values[1]) > 0)) {
+//                    $column->phpType = 'double';
+//                } else {
+//                    $column->phpType = 'integer';
+//                }
+//            } else {
+//                $column->phpType = 'double';
+//            }
+//        } else {
+//            $column->phpType = 'string';
+//        }
+//    }
+//
     /**
      * Extracts the default value for the column.
      * The value is typecasted to correct PHP type.
