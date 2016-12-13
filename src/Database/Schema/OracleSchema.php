@@ -7,7 +7,7 @@ use DreamFactory\Core\Database\Schema\ParameterSchema;
 use DreamFactory\Core\Database\Schema\ProcedureSchema;
 use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
-use DreamFactory\Core\Database\Schema\Schema;
+use DreamFactory\Core\Database\Components\Schema;
 use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 
@@ -359,7 +359,7 @@ EOD;
     {
         $c = new ColumnSchema(['name' => $column['column_name']]);
         $c->autoIncrement = isset($column['auto_increment']) ? $column['auto_increment'] : false;
-        $c->rawName = $this->quoteColumnName($c->name);
+        $c->quotedName = $this->quoteColumnName($c->name);
         $c->allowNull = $column['nullable'] === 'Y';
         $c->isPrimaryKey = strpos($column['key'], 'P') !== false;
         $c->dbType = $column['data_type'];
@@ -411,31 +411,19 @@ SQL;
     }
 
     /**
-     * Returns all table names in the database.
-     *
-     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
-     *                       If not empty, the returned table names will be prefixed with the schema name.
-     * @param bool   $include_views
-     *
-     * @return array all table names in the database.
+     * @inheritdoc
      */
-    protected function findTableNames($schema = '', $include_views = true)
+    protected function findTableNames($schema = '')
     {
-        if ($include_views) {
-            $condition = "object_type in ('TABLE','VIEW')";
-        } else {
-            $condition = "object_type = 'TABLE'";
-        }
-
         $sql = <<<EOD
-SELECT object_name as table_name, owner as table_schema, object_type as table_type FROM all_objects WHERE $condition
+SELECT object_name as table_name, owner as table_schema FROM all_objects WHERE object_type = 'TABLE'
 EOD;
 
         if (!empty($schema)) {
             $sql .= " AND owner = '$schema'";
         }
 
-        $defaultSchema = $this->getDefaultSchema();
+        $defaultSchema = $this->getNamingSchema();
 
         $rows = $this->connection->select($sql);
         $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
@@ -445,16 +433,44 @@ EOD;
             $row = array_change_key_case((array)$row, CASE_UPPER);
             $schemaName = array_get($row, 'TABLE_SCHEMA', '');
             $tableName = array_get($row, 'TABLE_NAME', '');
-            $isView = (0 === strcasecmp('VIEW', array_get($row, 'TABLE_TYPE', '')));
-            if ($addSchema) {
-                $name = $schemaName . '.' . $tableName;
-                $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
-            } else {
-                $name = $tableName;
-                $rawName = $this->quoteTableName($tableName);
-            }
-            $settings = compact('schemaName', 'tableName', 'name', 'rawName', 'isView');
+            $internalName = $schemaName . '.' . $tableName;
+            $name = ($addSchema) ? $internalName : $tableName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
+            $settings = compact('schemaName', 'tableName', 'name', 'internalName','quotedName');
+            $names[strtolower($name)] = new TableSchema($settings);
+        }
 
+        return $names;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function findViewNames($schema = '')
+    {
+        $sql = <<<EOD
+SELECT object_name as table_name, owner as table_schema FROM all_objects WHERE object_type = 'VIEW'
+EOD;
+
+        if (!empty($schema)) {
+            $sql .= " AND owner = '$schema'";
+        }
+
+        $defaultSchema = $this->getNamingSchema();
+
+        $rows = $this->connection->select($sql);
+        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
+
+        $names = [];
+        foreach ($rows as $row) {
+            $row = array_change_key_case((array)$row, CASE_UPPER);
+            $schemaName = array_get($row, 'TABLE_SCHEMA', '');
+            $tableName = array_get($row, 'TABLE_NAME', '');
+            $internalName = $schemaName . '.' . $tableName;
+            $name = ($addSchema) ? $internalName : $tableName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
+            $settings = compact('schemaName', 'tableName', 'name', 'internalName','quotedName');
+            $settings['isView'] = true;
             $names[strtolower($name)] = new TableSchema($settings);
         }
 
@@ -497,7 +513,7 @@ MYSQL;
         $rows2 = $this->connection->select($sql, $bindings);
         $rows = array_merge($rows, $rows2);
 
-        $defaultSchema = $this->getDefaultSchema();
+        $defaultSchema = $this->getNamingSchema();
         $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
 
         $names = [];
@@ -505,19 +521,16 @@ MYSQL;
             $row = array_change_key_case((array)$row, CASE_UPPER);
             $name = array_get($row, 'OBJECT_NAME');
             $schemaName = $schema;
-            if ($addSchema) {
-                $publicName = $schemaName . '.' . $name;
-                $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($name);
-            } else {
-                $publicName = $name;
-                $rawName = $this->quoteTableName($name);
-            }
+            $internalName = $schemaName . '.' . $name;
+            $publicName = ($addSchema) ? $internalName : $name;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($name);
             if (!empty($addPackage = array_get($row, 'PROCEDURE_NAME'))) {
                 $name .= '.' . $addPackage;
                 $publicName .= '.' . $addPackage;
-                $rawName .= '.' . $this->quoteTableName($addPackage);
+                $internalName .= '.' . $addPackage;
+                $quotedName .= '.' . $this->quoteTableName($addPackage);
             }
-            $settings = compact('schemaName', 'name', 'publicName', 'rawName');
+            $settings = compact('schemaName', 'name', 'publicName', 'quotedName', 'internalName');
             $names[strtolower($publicName)] =
                 ('PROCEDURE' === $type) ? new ProcedureSchema($settings) : new FunctionSchema($settings);
         }
@@ -663,7 +676,7 @@ MYSQL;
         if ($value !== null) {
             $value = (int)$value;
         } else {
-            $value = (int)$this->selectValue("SELECT MAX(\"{$table->primaryKey}\") FROM {$table->rawName}");
+            $value = (int)$this->selectValue("SELECT MAX(\"{$table->primaryKey}\") FROM {$table->quotedName}");
             $value++;
         }
         $this->connection->statement(
@@ -682,8 +695,6 @@ MYSQL;
      *
      * @param boolean $check  whether to turn on or off the integrity check.
      * @param string  $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
-     *
-     * @since 1.1.14
      */
     public function checkIntegrity($check = true, $schema = '')
     {
@@ -799,7 +810,7 @@ SQL;
 //     * @param ColumnSchema $column
 //     * @param string       $dbType DB type
 //     */
-//    public function extractType(ColumnSchema &$column, $dbType)
+//    public function extractType(ColumnSchema $column, $dbType)
 //    {
 //        parent::extractType($column, $dbType);
 //        if (strpos($dbType, 'FLOAT') !== false) {
@@ -829,7 +840,7 @@ SQL;
      * @param ColumnSchema $field
      * @param mixed        $defaultValue the default value obtained from metadata
      */
-    public function extractDefault(ColumnSchema &$field, $defaultValue)
+    public function extractDefault(ColumnSchema $field, $defaultValue)
     {
         if (stripos($defaultValue, 'timestamp') !== false) {
             $field->defaultValue = null;
@@ -845,7 +856,7 @@ SQL;
     {
         $paramStr = $this->getRoutineParamString($param_schemas, $values);
 
-        return "BEGIN {$routine->rawName}($paramStr); END;";
+        return "BEGIN {$routine->quotedName}($paramStr); END;";
     }
 
     /**

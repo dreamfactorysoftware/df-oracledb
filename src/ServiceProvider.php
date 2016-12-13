@@ -2,7 +2,7 @@
 namespace DreamFactory\Core\Oracle;
 
 use DreamFactory\Core\Components\ServiceDocBuilder;
-use DreamFactory\Core\Database\DbSchemaExtensions;
+use DreamFactory\Core\Components\DbSchemaExtensions;
 use DreamFactory\Core\Enums\ServiceTypeGroups;
 use DreamFactory\Core\Oracle\Database\Connectors\OracleConnector;
 use DreamFactory\Core\Oracle\Database\OracleConnection;
