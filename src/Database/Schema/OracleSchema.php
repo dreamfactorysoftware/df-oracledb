@@ -295,7 +295,7 @@ class OracleSchema extends Schema
      */
     protected function findColumns(TableSchema $table)
     {
-//        $params = [$table->tableName, $table->schemaName];
+//        $params = [$table->resourceName, $table->schemaName];
         $sql = <<<EOD
 SELECT a.column_name, a.data_type ||
     case
@@ -319,14 +319,14 @@ SELECT a.column_name, a.data_type ||
 FROM ALL_TAB_COLUMNS A
 INNER JOIN ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A.TABLE_NAME)
 LEFT JOIN user_col_comments com ON (A.table_name = com.table_name AND A.column_name = com.column_name)
-WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->tableName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
+WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->resourceName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
 ORDER by a.column_id
 EOD;
 
         if (!empty($columns = $this->connection->select($sql))) {
             $sql = <<<EOD
 SELECT trigger_body FROM ALL_TRIGGERS
-WHERE table_owner = '{$table->schemaName}' and table_name = '{$table->tableName}'
+WHERE table_owner = '{$table->schemaName}' and table_name = '{$table->resourceName}'
 and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
 EOD;
 
@@ -432,11 +432,11 @@ EOD;
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
             $schemaName = array_get($row, 'TABLE_SCHEMA', '');
-            $tableName = array_get($row, 'TABLE_NAME', '');
-            $internalName = $schemaName . '.' . $tableName;
-            $name = ($addSchema) ? $internalName : $tableName;
-            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
-            $settings = compact('schemaName', 'tableName', 'name', 'internalName','quotedName');
+            $resourceName = array_get($row, 'TABLE_NAME', '');
+            $internalName = $schemaName . '.' . $resourceName;
+            $name = ($addSchema) ? $internalName : $resourceName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
+            $settings = compact('schemaName', 'resourceName', 'name', 'internalName','quotedName');
             $names[strtolower($name)] = new TableSchema($settings);
         }
 
@@ -465,11 +465,11 @@ EOD;
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
             $schemaName = array_get($row, 'TABLE_SCHEMA', '');
-            $tableName = array_get($row, 'TABLE_NAME', '');
-            $internalName = $schemaName . '.' . $tableName;
-            $name = ($addSchema) ? $internalName : $tableName;
-            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
-            $settings = compact('schemaName', 'tableName', 'name', 'internalName','quotedName');
+            $resourceName = array_get($row, 'TABLE_NAME', '');
+            $internalName = $schemaName . '.' . $resourceName;
+            $name = ($addSchema) ? $internalName : $resourceName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
+            $settings = compact('schemaName', 'resourceName', 'name', 'internalName','quotedName');
             $settings['isView'] = true;
             $names[strtolower($name)] = new TableSchema($settings);
         }
@@ -519,19 +519,19 @@ MYSQL;
         $names = [];
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
-            $name = array_get($row, 'OBJECT_NAME');
+            $resourceName = array_get($row, 'OBJECT_NAME');
             $schemaName = $schema;
-            $internalName = $schemaName . '.' . $name;
-            $publicName = ($addSchema) ? $internalName : $name;
-            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($name);
+            $internalName = $schemaName . '.' . $resourceName;
+            $name = ($addSchema) ? $internalName : $resourceName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);
             if (!empty($addPackage = array_get($row, 'PROCEDURE_NAME'))) {
+                $resourceName .= '.' . $addPackage;
                 $name .= '.' . $addPackage;
-                $publicName .= '.' . $addPackage;
                 $internalName .= '.' . $addPackage;
                 $quotedName .= '.' . $this->quoteTableName($addPackage);
             }
-            $settings = compact('schemaName', 'name', 'publicName', 'quotedName', 'internalName');
-            $names[strtolower($publicName)] =
+            $settings = compact('schemaName', 'resourceName', 'name', 'quotedName', 'internalName');
+            $names[strtolower($name)] =
                 ('PROCEDURE' === $type) ? new ProcedureSchema($settings) : new FunctionSchema($settings);
         }
 
@@ -541,7 +541,7 @@ MYSQL;
     /**
      * @inheritdoc
      */
-    protected function loadParameters(&$holder)
+    protected function loadParameters(RoutineSchema &$holder)
     {
         $sql = <<<MYSQL
 SELECT argument_name, position, sequence, data_type, in_out, data_length, data_precision, data_scale, 
@@ -703,11 +703,10 @@ MYSQL;
         }
         $mode = $check ? 'ENABLE' : 'DISABLE';
         $query = "SELECT CONSTRAINT_NAME FROM USER_CONSTRAINTS WHERE TABLE_NAME=:t AND OWNER=:o";
-        foreach ($this->getTableNames($schema) as $tableInfo) {
-            $table = $tableInfo['name'];
-            $constraints = $this->selectColumn($query, [':t' => $table, ':o' => $schema]);
+        foreach ($this->getTableNames($schema) as $table) {
+            $constraints = $this->selectColumn($query, [':t' => $table->resourceName, ':o' => $table->schemaName]);
             foreach ($constraints as $constraint) {
-                $this->connection->statement("ALTER TABLE \"{$schema}\".\"{$table}\" {$mode} CONSTRAINT \"{$constraint}\"");
+                $this->connection->statement("ALTER TABLE {$table->quotedName} $mode CONSTRAINT \"{$constraint}\"");
             }
         }
     }
@@ -797,11 +796,11 @@ SQL;
     {
         switch ($field_info->type) {
             case DbSimpleTypes::TYPE_BOOLEAN:
-                $value = (filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 1 : 0);
+                $value = ($value ? 1 : 0);
                 break;
         }
 
-        return $value;
+        return parent::parseValueForSet($value, $field_info);
     }
 
 //    /**
