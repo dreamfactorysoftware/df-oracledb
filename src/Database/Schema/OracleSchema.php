@@ -541,7 +541,7 @@ MYSQL;
     /**
      * @inheritdoc
      */
-    protected function loadParameters(RoutineSchema &$holder)
+    protected function loadParameters(RoutineSchema $holder)
     {
         $sql = <<<MYSQL
 SELECT argument_name, position, sequence, data_type, in_out, data_length, data_precision, data_scale, 
