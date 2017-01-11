@@ -711,7 +711,8 @@ MYSQL;
     {
         $result = parent::dropTable($table);
 
-        $sequence = '"' . strtoupper($table) . '_SEQ"';
+        $table = strtoupper(str_replace('"', '', $table));
+        $sequence = '"' . $table . '_SEQ"';
         $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP SEQUENCE {$sequence}';
@@ -724,7 +725,7 @@ END;
 MYSQL;
         $this->connection->statement($sql);
 
-        $trigger = '"' . strtoupper($table) . '_TRG"';
+        $trigger = '"' . $table . '_TRG"';
         $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP TRIGGER {$trigger}';
