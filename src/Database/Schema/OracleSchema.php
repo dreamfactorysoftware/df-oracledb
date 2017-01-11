@@ -584,43 +584,46 @@ MYSQL;
     }
 
     /**
-     * Builds a SQL statement for renaming a DB table.
-     *
-     * @param string $table   the table to be renamed. The name will be properly quoted by the method.
-     * @param string $newName the new table name. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for renaming a DB table.
+     * @inheritdoc
      */
     public function renameTable($table, $newName)
     {
-        return 'ALTER TABLE ' . $this->quoteTableName($table) . ' RENAME TO ' . $this->quoteTableName($newName);
+        return <<<MYSQL
+ALTER TABLE {$this->quoteTableName($table)} RENAME TO {$this->quoteTableName($newName)};
+MYSQL;
     }
 
     /**
-     * Builds a SQL statement for changing the definition of a column.
-     *
-     * @param string $table      the table whose column is to be changed. The table name will be properly quoted by the
-     *                           method.
-     * @param string $column     the name of the column to be changed. The name will be properly quoted by the method.
-     * @param string $definition the new column type. The {@link getColumnType} method will be invoked to convert
-     *                           abstract column type (if any) into the physical one. Anything that is not recognized
-     *                           as abstract type will be kept in the generated SQL. For example, 'string' will be
-     *                           turned into 'varchar( 255 )', while 'string not null' will become 'varchar( 255 ) not
-     *                           null'.
-     *
-     * @return string the SQL statement for changing the definition of a column.
-     * @since 1.1.6
+     * @inheritdoc
      */
     public function alterColumn($table, $column, $definition)
     {
-        $sql = <<<MYSQL
-ALTER TABLE {$this->quoteTableName($table)}
-MODIFY {$this->quoteColumnName($column)} {$this->getColumnType($definition)}
+        return <<<MYSQL
+ALTER TABLE $table MODIFY {$this->quoteColumnName($column)} {$this->getColumnType($definition)}
 MYSQL;
-
-        return $sql;
     }
 
+    /**
+     * @inheritdoc
+     */
+    public function dropColumns($table, $columns)
+    {
+        $columns = (array)$columns;
+
+        if (!empty($columns)) {
+            if (1 === count($columns)) {
+                return $this->connection->statement("ALTER TABLE $table DROP COLUMN " . $columns[0]);
+            } else {
+                return $this->connection->statement("ALTER TABLE $table DROP (" . implode(',', $columns) . ")");
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function makeConstraintName($prefix, $table, $column)
     {
         $temp = parent::makeConstraintName($prefix, $table, $column);
@@ -632,19 +635,16 @@ MYSQL;
         return $temp;
     }
 
+    /**
+     * @inheritdoc
+     */
     public function requiresCreateIndex($unique = false, $on_create_table = false)
     {
         return !($unique && $on_create_table);
     }
 
     /**
-     * Builds a SQL statement for dropping an index.
-     *
-     * @param string $name  the name of the index to be dropped. The name will be properly quoted by the method.
-     * @param string $table the table whose index is to be dropped. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for dropping an index.
-     * @since 1.1.6
+     * @inheritdoc
      */
     public function dropIndex($name, $table)
     {
@@ -652,20 +652,7 @@ MYSQL;
     }
 
     /**
-     * Resets the sequence value of a table's primary key .
-     * The sequence will be reset such that the primary key of the next new row inserted
-     * will have the specified value or max value of a primary key plus one (i.e. sequence trimming).
-     *
-     * Note, behavior of this method has changed since 1.1.14 release.
-     * Please refer to the following issue for more details:
-     * {@link  https://github.com/yiisoft/yii/issues/2241}
-     *
-     * @param TableSchema    $table the table schema whose primary key sequence will be reset
-     * @param integer | null $value the value for the primary key of the next new row inserted.
-     *                              If this is not set, the next new row's primary key will
-     *                              have the max value of a primary key plus one (i.e. sequence trimming).
-     *
-     * @since 1.1.13
+     * @inheritdoc
      */
     public function resetSequence($table, $value = null)
     {
@@ -691,10 +678,7 @@ MYSQL;
     }
 
     /**
-     * Enables or disables integrity check.
-     *
-     * @param boolean $check  whether to turn on or off the integrity check.
-     * @param string  $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
+     * @inheritdoc
      */
     public function checkIntegrity($check = true, $schema = '')
     {
@@ -721,12 +705,7 @@ MYSQL;
     }
 
     /**
-     * Builds and executes a SQL statement for dropping a DB table.
-     *
-     * @param string $table the table to be dropped. The name will be properly quoted by the method.
-     *
-     * @return integer 0 is always returned. See {@link http://php.net/manual/en/pdostatement.rowcount.php} for more
-     *                 information.
+     * @inheritdoc
      */
     public function dropTable($table)
     {
