@@ -624,12 +624,13 @@ MYSQL;
     /**
      * @inheritdoc
      */
-    public function makeConstraintName($prefix, $table, $column)
+    public function makeConstraintName($prefix, $table, $column = null)
     {
         $temp = parent::makeConstraintName($prefix, $table, $column);
         // must be less than 30 characters
         if (30 < strlen($temp)) {
-            $temp = $prefix . '_' . hash('crc32', $table . '_' . $column);
+            $temp = substr($temp, strlen($prefix . '_'));
+            $temp = $prefix . '_' . hash('crc32', $temp);
         }
 
         return $temp;
@@ -666,14 +667,15 @@ MYSQL;
             $value = (int)$this->selectValue("SELECT MAX(\"{$table->primaryKey}\") FROM {$table->quotedName}");
             $value++;
         }
+        $tableName = str_replace('.', '_', $table->internalName);
+        // sequence and trigger names maximum length is 30
+        if (26 < strlen($tableName)) {
+            $tableName = hash('crc32', $tableName);
+        }
+        $sequence = $this->quoteTableName(strtoupper($tableName) . '_SEQ');
+        $this->connection->statement("DROP SEQUENCE $sequence");
         $this->connection->statement(
-            "DROP SEQUENCE \"{
-            $table->name}_SEQ\""
-        );
-        $this->connection->statement(
-            "CREATE SEQUENCE \"{
-            $table->name}_SEQ\" START WITH {
-            $value} INCREMENT BY 1 NOMAXVALUE NOCACHE"
+            "CREATE SEQUENCE $sequence START WITH {$value} INCREMENT BY 1 NOMAXVALUE NOCACHE"
         );
     }
 
@@ -711,8 +713,13 @@ MYSQL;
     {
         $result = parent::dropTable($table);
 
-        $table = strtoupper(str_replace('"', '', $table));
-        $sequence = '"' . $table . '_SEQ"';
+        $table = str_replace(['.', '"'], ['_', ''], $table);
+        // sequence and trigger names maximum length is 30
+        if (26 < strlen($table)) {
+            $table = hash('crc32', $table);
+        }
+        $sequence = $this->quoteTableName(strtoupper($table) . '_SEQ');
+        $trigger = $this->quoteTableName(strtoupper($table) . '_TRG');
         $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP SEQUENCE {$sequence}';
@@ -725,7 +732,6 @@ END;
 MYSQL;
         $this->connection->statement($sql);
 
-        $trigger = '"' . $table . '_TRG"';
         $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP TRIGGER {$trigger}';
@@ -744,13 +750,18 @@ MYSQL;
     public function getPrimaryKeyCommands($table, $column)
     {
         // pre 12c versions need sequences and trigger to accomplish autoincrement
-        $sequence = '"' . strtoupper($table) . '_SEQ"';
         $trigTable = $this->quoteTableName($table);
         $trigField = $this->quoteColumnName($column);
+        $table = str_replace('.', '_', $table);
+        // sequence and trigger names maximum length is 30
+        if (26 < strlen($table)) {
+            $table = hash('crc32', $table);
+        }
+        $sequence = $this->quoteTableName(strtoupper($table) . '_SEQ');
+        $trigger = $this->quoteTableName(strtoupper($table) . '_TRG');
 
         $extras = [];
         $extras[] = "CREATE SEQUENCE $sequence";
-        $trigger = '"' . strtoupper($table) . '_TRG"';
         $extras[] = <<<SQL
 CREATE OR REPLACE TRIGGER {$trigger}
 BEFORE INSERT ON {$trigTable}
