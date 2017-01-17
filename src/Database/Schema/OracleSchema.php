@@ -7,7 +7,7 @@ use DreamFactory\Core\Database\Schema\ParameterSchema;
 use DreamFactory\Core\Database\Schema\ProcedureSchema;
 use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
-use DreamFactory\Core\Database\Schema\Schema;
+use DreamFactory\Core\Database\Components\Schema;
 use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 
@@ -295,7 +295,7 @@ class OracleSchema extends Schema
      */
     protected function findColumns(TableSchema $table)
     {
-//        $params = [$table->tableName, $table->schemaName];
+//        $params = [$table->resourceName, $table->schemaName];
         $sql = <<<EOD
 SELECT a.column_name, a.data_type ||
     case
@@ -319,14 +319,14 @@ SELECT a.column_name, a.data_type ||
 FROM ALL_TAB_COLUMNS A
 INNER JOIN ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A.TABLE_NAME)
 LEFT JOIN user_col_comments com ON (A.table_name = com.table_name AND A.column_name = com.column_name)
-WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->tableName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
+WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->resourceName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
 ORDER by a.column_id
 EOD;
 
         if (!empty($columns = $this->connection->select($sql))) {
             $sql = <<<EOD
 SELECT trigger_body FROM ALL_TRIGGERS
-WHERE table_owner = '{$table->schemaName}' and table_name = '{$table->tableName}'
+WHERE table_owner = '{$table->schemaName}' and table_name = '{$table->resourceName}'
 and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
 EOD;
 
@@ -359,7 +359,7 @@ EOD;
     {
         $c = new ColumnSchema(['name' => $column['column_name']]);
         $c->autoIncrement = isset($column['auto_increment']) ? $column['auto_increment'] : false;
-        $c->rawName = $this->quoteColumnName($c->name);
+        $c->quotedName = $this->quoteColumnName($c->name);
         $c->allowNull = $column['nullable'] === 'Y';
         $c->isPrimaryKey = strpos($column['key'], 'P') !== false;
         $c->dbType = $column['data_type'];
@@ -411,31 +411,19 @@ SQL;
     }
 
     /**
-     * Returns all table names in the database.
-     *
-     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
-     *                       If not empty, the returned table names will be prefixed with the schema name.
-     * @param bool   $include_views
-     *
-     * @return array all table names in the database.
+     * @inheritdoc
      */
-    protected function findTableNames($schema = '', $include_views = true)
+    protected function findTableNames($schema = '')
     {
-        if ($include_views) {
-            $condition = "object_type in ('TABLE','VIEW')";
-        } else {
-            $condition = "object_type = 'TABLE'";
-        }
-
         $sql = <<<EOD
-SELECT object_name as table_name, owner as table_schema, object_type as table_type FROM all_objects WHERE $condition
+SELECT object_name as table_name, owner as table_schema FROM all_objects WHERE object_type = 'TABLE'
 EOD;
 
         if (!empty($schema)) {
             $sql .= " AND owner = '$schema'";
         }
 
-        $defaultSchema = $this->getDefaultSchema();
+        $defaultSchema = $this->getNamingSchema();
 
         $rows = $this->connection->select($sql);
         $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
@@ -444,17 +432,45 @@ EOD;
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
             $schemaName = array_get($row, 'TABLE_SCHEMA', '');
-            $tableName = array_get($row, 'TABLE_NAME', '');
-            $isView = (0 === strcasecmp('VIEW', array_get($row, 'TABLE_TYPE', '')));
-            if ($addSchema) {
-                $name = $schemaName . '.' . $tableName;
-                $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($tableName);;
-            } else {
-                $name = $tableName;
-                $rawName = $this->quoteTableName($tableName);
-            }
-            $settings = compact('schemaName', 'tableName', 'name', 'rawName', 'isView');
+            $resourceName = array_get($row, 'TABLE_NAME', '');
+            $internalName = $schemaName . '.' . $resourceName;
+            $name = ($addSchema) ? $internalName : $resourceName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
+            $settings = compact('schemaName', 'resourceName', 'name', 'internalName','quotedName');
+            $names[strtolower($name)] = new TableSchema($settings);
+        }
 
+        return $names;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function findViewNames($schema = '')
+    {
+        $sql = <<<EOD
+SELECT object_name as table_name, owner as table_schema FROM all_objects WHERE object_type = 'VIEW'
+EOD;
+
+        if (!empty($schema)) {
+            $sql .= " AND owner = '$schema'";
+        }
+
+        $defaultSchema = $this->getNamingSchema();
+
+        $rows = $this->connection->select($sql);
+        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
+
+        $names = [];
+        foreach ($rows as $row) {
+            $row = array_change_key_case((array)$row, CASE_UPPER);
+            $schemaName = array_get($row, 'TABLE_SCHEMA', '');
+            $resourceName = array_get($row, 'TABLE_NAME', '');
+            $internalName = $schemaName . '.' . $resourceName;
+            $name = ($addSchema) ? $internalName : $resourceName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
+            $settings = compact('schemaName', 'resourceName', 'name', 'internalName','quotedName');
+            $settings['isView'] = true;
             $names[strtolower($name)] = new TableSchema($settings);
         }
 
@@ -497,28 +513,25 @@ MYSQL;
         $rows2 = $this->connection->select($sql, $bindings);
         $rows = array_merge($rows, $rows2);
 
-        $defaultSchema = $this->getDefaultSchema();
+        $defaultSchema = $this->getNamingSchema();
         $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
 
         $names = [];
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
-            $name = array_get($row, 'OBJECT_NAME');
+            $resourceName = array_get($row, 'OBJECT_NAME');
             $schemaName = $schema;
-            if ($addSchema) {
-                $publicName = $schemaName . '.' . $name;
-                $rawName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($name);
-            } else {
-                $publicName = $name;
-                $rawName = $this->quoteTableName($name);
-            }
+            $internalName = $schemaName . '.' . $resourceName;
+            $name = ($addSchema) ? $internalName : $resourceName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);
             if (!empty($addPackage = array_get($row, 'PROCEDURE_NAME'))) {
+                $resourceName .= '.' . $addPackage;
                 $name .= '.' . $addPackage;
-                $publicName .= '.' . $addPackage;
-                $rawName .= '.' . $this->quoteTableName($addPackage);
+                $internalName .= '.' . $addPackage;
+                $quotedName .= '.' . $this->quoteTableName($addPackage);
             }
-            $settings = compact('schemaName', 'name', 'publicName', 'rawName');
-            $names[strtolower($publicName)] =
+            $settings = compact('schemaName', 'resourceName', 'name', 'quotedName', 'internalName');
+            $names[strtolower($name)] =
                 ('PROCEDURE' === $type) ? new ProcedureSchema($settings) : new FunctionSchema($settings);
         }
 
@@ -528,7 +541,7 @@ MYSQL;
     /**
      * @inheritdoc
      */
-    protected function loadParameters(&$holder)
+    protected function loadParameters(RoutineSchema $holder)
     {
         $sql = <<<MYSQL
 SELECT argument_name, position, sequence, data_type, in_out, data_length, data_precision, data_scale, 
@@ -571,67 +584,68 @@ MYSQL;
     }
 
     /**
-     * Builds a SQL statement for renaming a DB table.
-     *
-     * @param string $table   the table to be renamed. The name will be properly quoted by the method.
-     * @param string $newName the new table name. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for renaming a DB table.
+     * @inheritdoc
      */
     public function renameTable($table, $newName)
     {
-        return 'ALTER TABLE ' . $this->quoteTableName($table) . ' RENAME TO ' . $this->quoteTableName($newName);
+        return <<<MYSQL
+ALTER TABLE {$this->quoteTableName($table)} RENAME TO {$this->quoteTableName($newName)};
+MYSQL;
     }
 
     /**
-     * Builds a SQL statement for changing the definition of a column.
-     *
-     * @param string $table      the table whose column is to be changed. The table name will be properly quoted by the
-     *                           method.
-     * @param string $column     the name of the column to be changed. The name will be properly quoted by the method.
-     * @param string $definition the new column type. The {@link getColumnType} method will be invoked to convert
-     *                           abstract column type (if any) into the physical one. Anything that is not recognized
-     *                           as abstract type will be kept in the generated SQL. For example, 'string' will be
-     *                           turned into 'varchar( 255 )', while 'string not null' will become 'varchar( 255 ) not
-     *                           null'.
-     *
-     * @return string the SQL statement for changing the definition of a column.
-     * @since 1.1.6
+     * @inheritdoc
      */
     public function alterColumn($table, $column, $definition)
     {
-        $sql = <<<MYSQL
-ALTER TABLE {$this->quoteTableName($table)}
-MODIFY {$this->quoteColumnName($column)} {$this->getColumnType($definition)}
+        return <<<MYSQL
+ALTER TABLE $table MODIFY {$this->quoteColumnName($column)} {$this->getColumnType($definition)}
 MYSQL;
-
-        return $sql;
     }
 
-    public function makeConstraintName($prefix, $table, $column)
+    /**
+     * @inheritdoc
+     */
+    public function dropColumns($table, $columns)
+    {
+        $columns = (array)$columns;
+
+        if (!empty($columns)) {
+            if (1 === count($columns)) {
+                return $this->connection->statement("ALTER TABLE $table DROP COLUMN " . $columns[0]);
+            } else {
+                return $this->connection->statement("ALTER TABLE $table DROP (" . implode(',', $columns) . ")");
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function makeConstraintName($prefix, $table, $column = null)
     {
         $temp = parent::makeConstraintName($prefix, $table, $column);
         // must be less than 30 characters
         if (30 < strlen($temp)) {
-            $temp = $prefix . '_' . hash('crc32', $table . '_' . $column);
+            $temp = substr($temp, strlen($prefix . '_'));
+            $temp = $prefix . '_' . hash('crc32', $temp);
         }
 
         return $temp;
     }
 
+    /**
+     * @inheritdoc
+     */
     public function requiresCreateIndex($unique = false, $on_create_table = false)
     {
         return !($unique && $on_create_table);
     }
 
     /**
-     * Builds a SQL statement for dropping an index.
-     *
-     * @param string $name  the name of the index to be dropped. The name will be properly quoted by the method.
-     * @param string $table the table whose index is to be dropped. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for dropping an index.
-     * @since 1.1.6
+     * @inheritdoc
      */
     public function dropIndex($name, $table)
     {
@@ -639,20 +653,7 @@ MYSQL;
     }
 
     /**
-     * Resets the sequence value of a table's primary key .
-     * The sequence will be reset such that the primary key of the next new row inserted
-     * will have the specified value or max value of a primary key plus one (i.e. sequence trimming).
-     *
-     * Note, behavior of this method has changed since 1.1.14 release.
-     * Please refer to the following issue for more details:
-     * {@link  https://github.com/yiisoft/yii/issues/2241}
-     *
-     * @param TableSchema    $table the table schema whose primary key sequence will be reset
-     * @param integer | null $value the value for the primary key of the next new row inserted.
-     *                              If this is not set, the next new row's primary key will
-     *                              have the max value of a primary key plus one (i.e. sequence trimming).
-     *
-     * @since 1.1.13
+     * @inheritdoc
      */
     public function resetSequence($table, $value = null)
     {
@@ -663,27 +664,23 @@ MYSQL;
         if ($value !== null) {
             $value = (int)$value;
         } else {
-            $value = (int)$this->selectValue("SELECT MAX(\"{$table->primaryKey}\") FROM {$table->rawName}");
+            $value = (int)$this->selectValue("SELECT MAX(\"{$table->primaryKey}\") FROM {$table->quotedName}");
             $value++;
         }
+        $tableName = str_replace('.', '_', $table->internalName);
+        // sequence and trigger names maximum length is 30
+        if (26 < strlen($tableName)) {
+            $tableName = hash('crc32', $tableName);
+        }
+        $sequence = $this->quoteTableName(strtoupper($tableName) . '_SEQ');
+        $this->connection->statement("DROP SEQUENCE $sequence");
         $this->connection->statement(
-            "DROP SEQUENCE \"{
-            $table->name}_SEQ\""
-        );
-        $this->connection->statement(
-            "CREATE SEQUENCE \"{
-            $table->name}_SEQ\" START WITH {
-            $value} INCREMENT BY 1 NOMAXVALUE NOCACHE"
+            "CREATE SEQUENCE $sequence START WITH {$value} INCREMENT BY 1 NOMAXVALUE NOCACHE"
         );
     }
 
     /**
-     * Enables or disables integrity check.
-     *
-     * @param boolean $check  whether to turn on or off the integrity check.
-     * @param string  $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
-     *
-     * @since 1.1.14
+     * @inheritdoc
      */
     public function checkIntegrity($check = true, $schema = '')
     {
@@ -692,11 +689,10 @@ MYSQL;
         }
         $mode = $check ? 'ENABLE' : 'DISABLE';
         $query = "SELECT CONSTRAINT_NAME FROM USER_CONSTRAINTS WHERE TABLE_NAME=:t AND OWNER=:o";
-        foreach ($this->getTableNames($schema) as $tableInfo) {
-            $table = $tableInfo['name'];
-            $constraints = $this->selectColumn($query, [':t' => $table, ':o' => $schema]);
+        foreach ($this->getTableNames($schema) as $table) {
+            $constraints = $this->selectColumn($query, [':t' => $table->resourceName, ':o' => $table->schemaName]);
             foreach ($constraints as $constraint) {
-                $this->connection->statement("ALTER TABLE \"{$schema}\".\"{$table}\" {$mode} CONSTRAINT \"{$constraint}\"");
+                $this->connection->statement("ALTER TABLE {$table->quotedName} $mode CONSTRAINT \"{$constraint}\"");
             }
         }
     }
@@ -711,18 +707,19 @@ MYSQL;
     }
 
     /**
-     * Builds and executes a SQL statement for dropping a DB table.
-     *
-     * @param string $table the table to be dropped. The name will be properly quoted by the method.
-     *
-     * @return integer 0 is always returned. See {@link http://php.net/manual/en/pdostatement.rowcount.php} for more
-     *                 information.
+     * @inheritdoc
      */
     public function dropTable($table)
     {
         $result = parent::dropTable($table);
 
-        $sequence = '"' . strtoupper($table) . '_SEQ"';
+        $table = str_replace(['.', '"'], ['_', ''], $table);
+        // sequence and trigger names maximum length is 30
+        if (26 < strlen($table)) {
+            $table = hash('crc32', $table);
+        }
+        $sequence = $this->quoteTableName(strtoupper($table) . '_SEQ');
+        $trigger = $this->quoteTableName(strtoupper($table) . '_TRG');
         $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP SEQUENCE {$sequence}';
@@ -735,7 +732,6 @@ END;
 MYSQL;
         $this->connection->statement($sql);
 
-        $trigger = '"' . strtoupper($table) . '_TRG"';
         $sql = <<<MYSQL
 BEGIN
   EXECUTE IMMEDIATE 'DROP TRIGGER {$trigger}';
@@ -754,13 +750,18 @@ MYSQL;
     public function getPrimaryKeyCommands($table, $column)
     {
         // pre 12c versions need sequences and trigger to accomplish autoincrement
-        $sequence = '"' . strtoupper($table) . '_SEQ"';
         $trigTable = $this->quoteTableName($table);
         $trigField = $this->quoteColumnName($column);
+        $table = str_replace('.', '_', $table);
+        // sequence and trigger names maximum length is 30
+        if (26 < strlen($table)) {
+            $table = hash('crc32', $table);
+        }
+        $sequence = $this->quoteTableName(strtoupper($table) . '_SEQ');
+        $trigger = $this->quoteTableName(strtoupper($table) . '_TRG');
 
         $extras = [];
         $extras[] = "CREATE SEQUENCE $sequence";
-        $trigger = '"' . strtoupper($table) . '_TRG"';
         $extras[] = <<<SQL
 CREATE OR REPLACE TRIGGER {$trigger}
 BEFORE INSERT ON {$trigTable}
@@ -786,11 +787,11 @@ SQL;
     {
         switch ($field_info->type) {
             case DbSimpleTypes::TYPE_BOOLEAN:
-                $value = (filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 1 : 0);
+                $value = ($value ? 1 : 0);
                 break;
         }
 
-        return $value;
+        return parent::parseValueForSet($value, $field_info);
     }
 
 //    /**
@@ -799,7 +800,7 @@ SQL;
 //     * @param ColumnSchema $column
 //     * @param string       $dbType DB type
 //     */
-//    public function extractType(ColumnSchema &$column, $dbType)
+//    public function extractType(ColumnSchema $column, $dbType)
 //    {
 //        parent::extractType($column, $dbType);
 //        if (strpos($dbType, 'FLOAT') !== false) {
@@ -829,7 +830,7 @@ SQL;
      * @param ColumnSchema $field
      * @param mixed        $defaultValue the default value obtained from metadata
      */
-    public function extractDefault(ColumnSchema &$field, $defaultValue)
+    public function extractDefault(ColumnSchema $field, $defaultValue)
     {
         if (stripos($defaultValue, 'timestamp') !== false) {
             $field->defaultValue = null;
@@ -845,7 +846,7 @@ SQL;
     {
         $paramStr = $this->getRoutineParamString($param_schemas, $values);
 
-        return "BEGIN {$routine->rawName}($paramStr); END;";
+        return "BEGIN {$routine->quotedName}($paramStr); END;";
     }
 
     /**

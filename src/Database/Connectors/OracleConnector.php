@@ -4,6 +4,7 @@ namespace DreamFactory\Core\Oracle\Database\Connectors;
 
 use Illuminate\Database\Connectors\Connector;
 use Illuminate\Database\Connectors\ConnectorInterface;
+use Exception;
 use PDO;
 use Yajra\Pdo\Oci8;
 
@@ -168,12 +169,7 @@ class OracleConnector extends Connector implements ConnectorInterface
     }
 
     /**
-     * Create a new PDO connection.
-     *
-     * @param  string $tns
-     * @param  array $config
-     * @param  array $options
-     * @return PDO
+     * @inheritdoc
      */
     public function createConnection($tns, array $config, array $options)
     {
@@ -185,6 +181,16 @@ class OracleConnector extends Connector implements ConnectorInterface
         $config             = $this->setCharset($config);
         $options['charset'] = $config['charset'];
 
-        return new Oci8($tns, $config['username'], $config['password'], $options);
+        try {
+            $pdo = new Oci8($tns, $config['username'], $config['password'], $options);
+        } catch (Exception $e) {
+            if ($this->causedByLostConnection($e)) {
+                return new Oci8($tns, $config['username'], $config['password'], $options);
+            }
+
+            throw $e;
+        }
+
+        return $pdo;
     }
 }

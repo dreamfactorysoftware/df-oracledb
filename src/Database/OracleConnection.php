@@ -267,4 +267,14 @@ class OracleConnection extends Connection
     {
         return new Processor;
     }
+
+    public function getPdo()
+    {
+        // For some reason the Oci8 dies without warning over multiple uses, this recreates for now.
+        if (is_null($this->pdo)) {
+            $this->reconnect();
+        }
+
+        return parent::getPdo();
+    }
 }
