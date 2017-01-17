@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [0.7.0] - 2017-01-16
+### Changed
+- Adhere to refactored df-core, see df-database
+- Cleanup schema management issues
+
 ## [0.6.0] - 2016-11-17
 - Virtual relationships rework to support all relationship types
 - DB base class changes to support field configuration across all database types
@@ -42,7 +47,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.3.0 - 2016-05-27
 First official release working with the new [df-core](https://github.com/dreamfactorysoftware/df-core) library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.6.0...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.2...0.6.0
 [0.5.2]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.0...0.5.1
