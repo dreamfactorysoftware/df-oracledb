@@ -17,7 +17,7 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
 {
     use ServiceDocBuilder;
 
-    public function boot()
+    public function register()
     {
         // Add our database drivers.
         $this->app->resolving('db', function (DatabaseManager $db) {
