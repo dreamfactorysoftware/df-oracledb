@@ -854,7 +854,16 @@ SQL;
      */
     protected function getFunctionStatement(RoutineSchema $routine, array $param_schemas, array &$values)
     {
-        return parent::getFunctionStatement($routine, $param_schemas, $values) . ' FROM DUAL';
+        switch ($routine->returnType) {
+            case DbSimpleTypes::TYPE_TABLE:
+                $paramStr = $this->getRoutineParamString($param_schemas, $values);
+
+                return "SELECT * from TABLE({$routine->quotedName}($paramStr))";
+                break;
+            default:
+                return parent::getFunctionStatement($routine, $param_schemas, $values) . ' FROM DUAL';
+                break;
+        }
     }
 
     /**

@@ -6,6 +6,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 ### Changed
 ### Fixed
+- DF-946 Handled 'table' return type for stored functions
 
 ## [0.7.0] - 2017-01-16
 ### Changed
