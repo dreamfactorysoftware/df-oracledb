@@ -5,6 +5,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 ### Added
 ### Changed
+- Switching to using yajra/laravel-oci8 instead of our old fork
 ### Fixed
 - DF-946 Handled 'table' return type for stored functions
 

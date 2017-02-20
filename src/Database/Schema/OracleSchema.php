@@ -297,17 +297,7 @@ class OracleSchema extends Schema
     {
 //        $params = [$table->resourceName, $table->schemaName];
         $sql = <<<EOD
-SELECT a.column_name, a.data_type ||
-    case
-        when data_precision is not null
-            then '(' || a.data_precision ||
-                    case when a.data_scale > 0 then ',' || a.data_scale else '' end
-                || ')'
-        when data_type = 'DATE' then ''
-        when data_type = 'NUMBER' then ''
-        else '(' || to_char(a.data_length) || ')'
-    end as data_type,
-    a.nullable, a.data_default,
+SELECT ct.coll_type, a.column_name, a.data_type, a.data_precision, a.data_scale, a.data_length, a.nullable, a.data_default,
     (   SELECT D.constraint_type
         FROM ALL_CONS_COLUMNS C
         inner join ALL_constraints D on D.OWNER = C.OWNER and D.constraint_name = C.constraint_name
@@ -319,6 +309,7 @@ SELECT a.column_name, a.data_type ||
 FROM ALL_TAB_COLUMNS A
 INNER JOIN ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A.TABLE_NAME)
 LEFT JOIN user_col_comments com ON (A.table_name = com.table_name AND A.column_name = com.column_name)
+LEFT JOIN all_coll_types ct ON (A.data_type = ct.type_name AND A.data_type_owner = ct.owner)
 WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->resourceName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
 ORDER by a.column_id
 EOD;
@@ -363,10 +354,37 @@ EOD;
         $c->allowNull = $column['nullable'] === 'Y';
         $c->isPrimaryKey = strpos($column['key'], 'P') !== false;
         $c->dbType = $column['data_type'];
+        $c->precision = intval($column['data_precision']);
+        $c->scale = intval($column['data_scale']);
+        // all of this is for consistency across drivers
+        if ($c->precision > 0) {
+            if ($c->scale <= 0) {
+                $c->size = $c->precision;
+                $c->scale = null;
+            }
+        } else {
+            $c->precision = null;
+            $c->scale = null;
+            $c->size = intval($column['data_length']);
+            if ($c->size <= 0) {
+                $c->size = null;
+            }
+        }
         $this->extractLimit($c, $c->dbType);
         $c->fixedLength = $this->extractFixedLength($c->dbType);
         $c->supportsMultibyte = $this->extractMultiByteSupport($c->dbType);
-        $this->extractType($c, $c->dbType);
+        $collectionType = array_get($column, 'coll_type');
+        switch (strtolower($collectionType)) {
+            case 'table':
+                $this->extractType($c, 'table');
+                break;
+            case 'varying array':
+                $this->extractType($c, 'array');
+                break;
+            default:
+                $this->extractType($c, $c->dbType);
+                break;
+        }
         $this->extractDefault($c, $column['data_default']);
         $c->comment = $column['column_comment'] === null ? '' : $column['column_comment'];
 
@@ -416,7 +434,7 @@ SQL;
     protected function findTableNames($schema = '')
     {
         $sql = <<<EOD
-SELECT object_name as table_name, owner as table_schema FROM all_objects WHERE object_type = 'TABLE'
+SELECT table_name, owner as table_schema FROM all_tables WHERE nested = 'NO'
 EOD;
 
         if (!empty($schema)) {
@@ -436,7 +454,7 @@ EOD;
             $internalName = $schemaName . '.' . $resourceName;
             $name = ($addSchema) ? $internalName : $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
-            $settings = compact('schemaName', 'resourceName', 'name', 'internalName','quotedName');
+            $settings = compact('schemaName', 'resourceName', 'name', 'internalName', 'quotedName');
             $names[strtolower($name)] = new TableSchema($settings);
         }
 
@@ -469,7 +487,7 @@ EOD;
             $internalName = $schemaName . '.' . $resourceName;
             $name = ($addSchema) ? $internalName : $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
-            $settings = compact('schemaName', 'resourceName', 'name', 'internalName','quotedName');
+            $settings = compact('schemaName', 'resourceName', 'name', 'internalName', 'quotedName');
             $settings['isView'] = true;
             $names[strtolower($name)] = new TableSchema($settings);
         }
