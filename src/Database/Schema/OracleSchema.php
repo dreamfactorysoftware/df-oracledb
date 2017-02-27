@@ -297,7 +297,7 @@ class OracleSchema extends Schema
     {
 //        $params = [$table->resourceName, $table->schemaName];
         $sql = <<<EOD
-SELECT ct.coll_type, a.column_name, a.data_type, a.data_precision, a.data_scale, a.data_length, a.nullable, a.data_default,
+SELECT a.column_name, a.data_type, a.data_precision, a.data_scale, a.data_length, a.nullable, a.data_default,
     (   SELECT D.constraint_type
         FROM ALL_CONS_COLUMNS C
         inner join ALL_constraints D on D.OWNER = C.OWNER and D.constraint_name = C.constraint_name
@@ -305,11 +305,13 @@ SELECT ct.coll_type, a.column_name, a.data_type, a.data_precision, a.data_scale,
            and C.table_name = B.object_name
            and C.column_name = A.column_name
            and D.constraint_type = 'P') as Key,
-    com.comments as column_comment
+    com.comments as column_comment,
+    ct.coll_type AS collection_type, nt.table_name AS nested_table_name, nt.owner AS nested_table_owner
 FROM ALL_TAB_COLUMNS A
 INNER JOIN ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A.TABLE_NAME)
 LEFT JOIN user_col_comments com ON (A.table_name = com.table_name AND A.column_name = com.column_name)
 LEFT JOIN all_coll_types ct ON (A.data_type = ct.type_name AND A.data_type_owner = ct.owner)
+LEFT JOIN all_nested_tables nt ON (ct.type_name = nt.table_type_name AND ct.owner = nt.table_type_owner)
 WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->resourceName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
 ORDER by a.column_id
 EOD;
@@ -349,10 +351,10 @@ EOD;
     protected function createColumn($column)
     {
         $c = new ColumnSchema(['name' => $column['column_name']]);
-        $c->autoIncrement = isset($column['auto_increment']) ? $column['auto_increment'] : false;
+        $c->autoIncrement = array_get($column, 'auto_increment', false);
         $c->quotedName = $this->quoteColumnName($c->name);
         $c->allowNull = $column['nullable'] === 'Y';
-        $c->isPrimaryKey = strpos($column['key'], 'P') !== false;
+        $c->isPrimaryKey = strpos(strval(array_get($column,'key')), 'P') !== false;
         $c->dbType = $column['data_type'];
         $c->precision = intval($column['data_precision']);
         $c->scale = intval($column['data_scale']);
@@ -373,10 +375,27 @@ EOD;
         $this->extractLimit($c, $c->dbType);
         $c->fixedLength = $this->extractFixedLength($c->dbType);
         $c->supportsMultibyte = $this->extractMultiByteSupport($c->dbType);
-        $collectionType = array_get($column, 'coll_type');
+        $collectionType = array_get($column, 'collection_type');
         switch (strtolower($collectionType)) {
             case 'table':
                 $this->extractType($c, 'table');
+                $nestedTable = array_get($column, 'nested_table_name');
+                $nestedTableOwner = array_get($column, 'nested_table_owner');
+                $sql = <<<EOD
+SELECT column_name, data_type, data_precision, data_scale, data_length, nullable, data_default
+FROM ALL_NESTED_TABLE_COLS
+WHERE owner = '$nestedTableOwner' and table_name = '$nestedTable'
+and HIDDEN_COLUMN = 'NO'
+EOD;
+
+                $result = $this->connection->select($sql);
+                $nestedColumns = [];
+                foreach ($result as $nestedColumn) {
+                    $nestedColumn = array_change_key_case((array)$nestedColumn, CASE_LOWER);
+                    $nc = $this->createColumn($nestedColumn);
+                    $nestedColumns[$nc->name] = $nc->toArray();
+                }
+                $c->native = ['nested_columns' => $nestedColumns];
                 break;
             case 'varying array':
                 $this->extractType($c, 'array');
@@ -386,7 +405,7 @@ EOD;
                 break;
         }
         $this->extractDefault($c, $column['data_default']);
-        $c->comment = $column['column_comment'] === null ? '' : $column['column_comment'];
+        $c->comment = array_get($column, 'column_comment', '');
 
         return $c;
     }
