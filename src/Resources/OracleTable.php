@@ -26,20 +26,28 @@ class OracleTable extends Table
         if (!empty($fields)) {
             if (ApiOptions::FIELDS_ALL === $fields) {
                 foreach ($schema->getColumns(true) as $fieldInfo) {
-                    if (DbSimpleTypes::TYPE_TABLE === $fieldInfo->type) {
-                        $nestedFields[$fieldInfo->getName(true)] = $fieldInfo;
-                    } else {
-                        $otherFields[$fieldInfo->getName(true)] = $fieldInfo;
+                    switch ($fieldInfo->type) {
+                        case DbSimpleTypes::TYPE_ARRAY:
+                        case DbSimpleTypes::TYPE_TABLE:
+                            $nestedFields[$fieldInfo->getName(true)] = $fieldInfo;
+                            break;
+                        default:
+                            $otherFields[$fieldInfo->getName(true)] = $fieldInfo;
+                            break;
                     }
                 }
             } else {
                 $fields = static::fieldsToArray($fields);
                 foreach ($fields as $field) {
                     if ($fieldInfo = $schema->getColumn($field, true)) {
-                        if (DbSimpleTypes::TYPE_TABLE === $fieldInfo->type) {
-                            $nestedFields[$fieldInfo->getName(true)] = $fieldInfo;
-                        } else {
-                            $otherFields[$fieldInfo->getName(true)] = $fieldInfo;
+                        switch ($fieldInfo->type) {
+                            case DbSimpleTypes::TYPE_ARRAY:
+                            case DbSimpleTypes::TYPE_TABLE:
+                                $nestedFields[$fieldInfo->getName(true)] = $fieldInfo;
+                                break;
+                            default:
+                                $otherFields[$fieldInfo->getName(true)] = $fieldInfo;
+                                break;
                         }
                     }
                 }
@@ -47,9 +55,9 @@ class OracleTable extends Table
         }
 
         if (!empty($nestedFields)) {
-            $from = $builder->from . ' t1';
+            $from = $builder->from . ' pt1';
             foreach ($nestedFields as $field) {
-                $from .= ", TABLE(t1.{$field->internalName}) {$field->name}_t";
+                $from .= ", TABLE(pt1.{$field->internalName}) {$field->name}_t";
             }
 
             $result = $builder->from(DB::raw($from))->get();
@@ -106,19 +114,22 @@ class OracleTable extends Table
      */
     protected function parseFieldForSelect($field)
     {
-        if (DbSimpleTypes::TYPE_TABLE === $field->type) {
-            if (!empty($nestedTableFields = array_get($field->native, 'nested_columns'))) {
-                $nestedOutput = [];
-                foreach (array_keys($nestedTableFields) as $member) {
-                    $nestedOutput[] = DB::raw($field->name . "_t.$member AS {$field->name}_$member");
+        switch ($field->type) {
+            case DbSimpleTypes::TYPE_TABLE:
+                if (!empty($nestedTableFields = array_get($field->native, 'nested_columns'))) {
+                    $nestedOutput = [];
+                    foreach (array_keys($nestedTableFields) as $member) {
+                        $nestedOutput[] = DB::raw($field->name . "_t.$member AS {$field->name}_$member");
+                    }
+
+                    return $nestedOutput;
                 }
 
-                return $nestedOutput;
-            }
-
-            return DB::raw($field->name . '_t.*');
+                return DB::raw($field->name . '_t.*');
+            case DbSimpleTypes::TYPE_ARRAY:
+                return DB::raw($field->name . '_t.*');
+            default:
+                return parent::parseFieldForSelect($field);
         }
-
-        return parent::parseFieldForSelect($field);
     }
 }
