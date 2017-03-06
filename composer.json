@@ -29,8 +29,8 @@
     "wiki":   "https://wiki.dreamfactory.com"
   },
   "require":     {
-    "dreamfactory/df-sqldb":      "~0.7.0",
-    "yajra/laravel-pdo-via-oci8": "1.*"
+    "dreamfactory/df-sqldb": "~0.8.0",
+    "yajra/laravel-oci8":    "5.4.*"
   },
   "autoload":    {
     "psr-4": {
@@ -39,7 +39,7 @@
   },
   "extra":       {
     "branch-alias": {
-      "dev-develop": "0.7.x-dev"
+      "dev-develop": "0.8.x-dev"
     }
   }
 }
