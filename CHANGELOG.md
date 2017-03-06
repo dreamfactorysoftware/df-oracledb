@@ -5,9 +5,16 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 ### Added
 ### Changed
-- Switching to using yajra/laravel-oci8 instead of our old fork
 ### Fixed
+
+## [0.8.0] - 2017-03-03
+- Major restructuring to upgrade to Laravel 5.4 and be more dynamically available
+
+### Added
 - DF-946 Handled 'table' return type for stored functions
+
+### Changed
+- Switching to using yajra/laravel-oci8 instead of our old fork
 
 ## [0.7.0] - 2017-01-16
 ### Changed
@@ -49,7 +56,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.3.0 - 2016-05-27
 First official release working with the new [df-core](https://github.com/dreamfactorysoftware/df-core) library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.2...0.6.0
 [0.5.2]: https://github.com/dreamfactorysoftware/df-oracledb/compare/0.5.1...0.5.2
