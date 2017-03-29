@@ -25,13 +25,6 @@ class OracleDbConfig extends SqlDbConfig
         return 'AL32UTF8';
     }
 
-    protected function getConnectionFields()
-    {
-        $fields = parent::getConnectionFields();
-
-        return array_merge($fields, ['service_name', 'tns', 'charset', 'protocol']);
-    }
-
     public static function validateConfig($config, $create = true)
     {
         if (!empty(array_get($config, 'tns'))) {
@@ -51,34 +44,40 @@ class OracleDbConfig extends SqlDbConfig
         return true;
     }
 
-    public static function getDefaultConnectionInfo()
+    public static function getSchema()
     {
-        $defaults = parent::getDefaultConnectionInfo();
-        $defaults[] = [
-            'name'        => 'service_name',
-            'label'       => 'Service Name',
-            'type'        => 'string',
-            'description' => 'Optional service name if database (i.e. SID) is not set.'
-        ];
-        $defaults[] = [
-            'name'        => 'tns',
-            'label'       => 'TNS Full Connection String',
-            'type'        => 'string',
-            'description' => 'Overrides all other settings.'
-        ];
-        $defaults[] = [
-            'name'        => 'protocol',
-            'label'       => 'Connection Protocol',
-            'type'        => 'string',
-            'description' => 'Defaults to TCP.'
-        ];
-        $defaults[] = [
-            'name'        => 'charset',
-            'label'       => 'Character Set',
-            'type'        => 'string',
-            'description' => 'The character set to use for this connection, i.e. ' . static::getDefaultCharset()
+        $schema = parent::getSchema();
+        $extras = [
+            [
+                'name'        => 'tns',
+                'label'       => 'TNS Full Connection String',
+                'type'        => 'string',
+                'description' => 'Overrides all other settings.'
+            ],
+            [
+                'name'        => 'service_name',
+                'label'       => 'Service Name',
+                'type'        => 'string',
+                'description' => 'Optional service name if database (i.e. SID) is not set.'
+            ],
+            [
+                'name'        => 'protocol',
+                'label'       => 'Connection Protocol',
+                'type'        => 'string',
+                'description' => 'Defaults to TCP.'
+            ],
+            [
+                'name'        => 'charset',
+                'label'       => 'Character Set',
+                'type'        => 'string',
+                'description' => 'The character set to use for this connection, i.e. ' . static::getDefaultCharset()
+            ]
         ];
 
-        return $defaults;
+        $pos = array_search('options', array_keys($schema));
+        $front = array_slice($schema, 0, $pos, true);
+        $end = array_slice($schema, $pos, null, true);
+
+        return array_merge($front, $extras, $end);
     }
 }

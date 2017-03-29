@@ -5,6 +5,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 ### Added
 ### Changed
+- Use new service config handling for database configuration
 ### Fixed
 
 ## [0.8.0] - 2017-03-03
