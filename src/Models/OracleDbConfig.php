@@ -25,59 +25,52 @@ class OracleDbConfig extends SqlDbConfig
         return 'AL32UTF8';
     }
 
-    public static function validateConfig($config, $create = true)
+    public function validate($data, $throwException = true)
     {
-        if (!empty(array_get($config, 'tns'))) {
+        $connection = $this->getAttribute('connection');
+        if (!empty(array_get($connection, 'tns'))) {
             return true; // overrides everything else
         }
 
-        if ($create) {
-            if (empty(array_get($config, 'host'))) {
-                throw new BadRequestException("If not using TNS, connection information must contain host name.");
-            }
-
-            if (empty(array_get($config, 'database')) && empty(array_get($config, 'service_name'))) {
-                throw new BadRequestException("If not using TNS, connection information must contain either database (SID) or service_name (SERVICE_NAME).");
-            }
+        if (empty(array_get($connection, 'host'))) {
+            throw new BadRequestException("If not using TNS, connection information must contain host name.");
         }
 
-        return true;
+        if (empty(array_get($connection, 'database')) && empty(array_get($connection, 'service_name'))) {
+            throw new BadRequestException("If not using TNS, connection information must contain either database (SID) or service_name (SERVICE_NAME).");
+        }
+
+        return parent::validate($data, $throwException);
     }
 
-    public static function getSchema()
+    public static function getDefaultConnectionInfo()
     {
-        $schema = parent::getSchema();
-        $extras = [
-            [
-                'name'        => 'tns',
-                'label'       => 'TNS Full Connection String',
-                'type'        => 'string',
-                'description' => 'Overrides all other settings.'
-            ],
-            [
-                'name'        => 'service_name',
-                'label'       => 'Service Name',
-                'type'        => 'string',
-                'description' => 'Optional service name if database (i.e. SID) is not set.'
-            ],
-            [
-                'name'        => 'protocol',
-                'label'       => 'Connection Protocol',
-                'type'        => 'string',
-                'description' => 'Defaults to TCP.'
-            ],
-            [
-                'name'        => 'charset',
-                'label'       => 'Character Set',
-                'type'        => 'string',
-                'description' => 'The character set to use for this connection, i.e. ' . static::getDefaultCharset()
-            ]
+        $defaults = parent::getDefaultConnectionInfo();
+        $defaults[] = [
+            'name'        => 'service_name',
+            'label'       => 'Service Name',
+            'type'        => 'string',
+            'description' => 'Optional service name if database (i.e. SID) is not set.'
+        ];
+        $defaults[] = [
+            'name'        => 'tns',
+            'label'       => 'TNS Full Connection String',
+            'type'        => 'string',
+            'description' => 'Overrides all other settings.'
+        ];
+        $defaults[] = [
+            'name'        => 'protocol',
+            'label'       => 'Connection Protocol',
+            'type'        => 'string',
+            'description' => 'Defaults to TCP.'
+        ];
+        $defaults[] = [
+            'name'        => 'charset',
+            'label'       => 'Character Set',
+            'type'        => 'string',
+            'description' => 'The character set to use for this connection, i.e. ' . static::getDefaultCharset()
         ];
 
-        $pos = array_search('options', array_keys($schema));
-        $front = array_slice($schema, 0, $pos, true);
-        $end = array_slice($schema, $pos, null, true);
-
-        return array_merge($front, $extras, $end);
+        return $defaults;
     }
 }
