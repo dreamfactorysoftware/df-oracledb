@@ -65,8 +65,8 @@ class OracleTable extends Table
             $result->transform(function ($item) use ($schema) {
                 $item = (array)$item;
                 foreach ($item as $field => &$value) {
-                    if (!is_null($value) && ($fieldInfo = $schema->getColumn($field, true))) {
-                        $value = $this->schema->formatValue($value, $fieldInfo);
+                    if ($fieldInfo = $schema->getColumn($field, true)) {
+                        $value = $this->schema->typecastToClient($value, $fieldInfo);
                     }
                 }
 
