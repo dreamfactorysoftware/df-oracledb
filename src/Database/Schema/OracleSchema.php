@@ -820,17 +820,6 @@ SQL;
         return $this->connection->raw('(CURRENT_TIMESTAMP)');
     }
 
-    public function parseValueForSet($value, $field_info)
-    {
-        switch ($field_info->type) {
-            case DbSimpleTypes::TYPE_BOOLEAN:
-                $value = ($value ? 1 : 0);
-                break;
-        }
-
-        return parent::parseValueForSet($value, $field_info);
-    }
-
 //    /**
 //     * Extracts the PHP type from DB type.
 //     *
@@ -924,7 +913,7 @@ SQL;
                         $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
                             $pdoType | \PDO::PARAM_INPUT_OUTPUT, -1, OCI_B_CURSOR);
                     } else {
-                        $pdoType = $this->getPdoType($paramSchema->type);
+                        $pdoType = $this->extractPdoType($paramSchema->type);
                         $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
                             $pdoType | \PDO::PARAM_INPUT_OUTPUT, $paramSchema->length);
                     }

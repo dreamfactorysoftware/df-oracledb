@@ -25,30 +25,22 @@ class OracleDbConfig extends SqlDbConfig
         return 'AL32UTF8';
     }
 
-    protected function getConnectionFields()
+    public function validate($data, $throwException = true)
     {
-        $fields = parent::getConnectionFields();
-
-        return array_merge($fields, ['service_name', 'tns', 'charset', 'protocol']);
-    }
-
-    public static function validateConfig($config, $create = true)
-    {
-        if (!empty(array_get($config, 'tns'))) {
+        $connection = $this->getAttribute('connection');
+        if (!empty(array_get($connection, 'tns'))) {
             return true; // overrides everything else
         }
 
-        if ($create) {
-            if (empty(array_get($config, 'host'))) {
-                throw new BadRequestException("If not using TNS, connection information must contain host name.");
-            }
-
-            if (empty(array_get($config, 'database')) && empty(array_get($config, 'service_name'))) {
-                throw new BadRequestException("If not using TNS, connection information must contain either database (SID) or service_name (SERVICE_NAME).");
-            }
+        if (empty(array_get($connection, 'host'))) {
+            throw new BadRequestException("If not using TNS, connection information must contain host name.");
         }
 
-        return true;
+        if (empty(array_get($connection, 'database')) && empty(array_get($connection, 'service_name'))) {
+            throw new BadRequestException("If not using TNS, connection information must contain either database (SID) or service_name (SERVICE_NAME).");
+        }
+
+        return parent::validate($data, $throwException);
     }
 
     public static function getDefaultConnectionInfo()
