@@ -40,7 +40,14 @@ class OracleDbConfig extends SqlDbConfig
             throw new BadRequestException("If not using TNS, connection information must contain either database (SID) or service_name (SERVICE_NAME).");
         }
 
-        return parent::validate($data, $throwException);
+        return true;
+    }
+
+    protected function getConnectionFields()
+    {
+        $fields = parent::getConnectionFields();
+
+        return array_merge($fields, ['service_name', 'tns', 'protocol', 'charset']);
     }
 
     public static function getDefaultConnectionInfo()
