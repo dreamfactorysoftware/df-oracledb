@@ -7,20 +7,14 @@ use DreamFactory\Core\Database\Schema\ParameterSchema;
 use DreamFactory\Core\Database\Schema\ProcedureSchema;
 use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
-use DreamFactory\Core\Database\Components\Schema;
-use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\Enums\DbSimpleTypes;
+use DreamFactory\Core\SqlDb\Database\Schema\SqlSchema;
 
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
  */
-class OracleSchema extends Schema
+class OracleSchema extends SqlSchema
 {
-    /**
-     * Underlying database provides field-level schema, i.e. SQL (true) vs NoSQL (false)
-     */
-    const PROVIDES_FIELD_SCHEMA = true;
-
     /**
      * Default fetch mode, base class uses NAMED which OCI8 does not support
      */
@@ -35,19 +29,6 @@ class OracleSchema extends Schema
         // new no sequence identity setting from 12c
         //        'pk' => 'NUMBER GENERATED ALWAYS AS IDENTITY',
     ];
-
-    /**
-     * @inheritdoc
-     */
-    public function getSupportedResourceTypes()
-    {
-        return [
-            DbResourceTypes::TYPE_TABLE,
-            DbResourceTypes::TYPE_VIEW,
-            DbResourceTypes::TYPE_PROCEDURE,
-            DbResourceTypes::TYPE_FUNCTION
-        ];
-    }
 
     protected function translateSimpleColumnTypes(array &$info)
     {

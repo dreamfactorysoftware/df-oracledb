@@ -28,7 +28,7 @@ class OracleDb extends SqlDb
      */
     public function getResources($only_handlers = false)
     {
-        $types = $this->schema->getSupportedResourceTypes();
+        $types = $this->getSchema()->getSupportedResourceTypes();
         $resources = [
             Schema::RESOURCE_NAME => [
                 'name'       => Schema::RESOURCE_NAME,
