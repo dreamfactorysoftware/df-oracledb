@@ -1,4 +1,5 @@
 <?php
+
 namespace DreamFactory\Core\Oracle\Database\Schema;
 
 use DreamFactory\Core\Database\Schema\ColumnSchema;
@@ -7,20 +8,14 @@ use DreamFactory\Core\Database\Schema\ParameterSchema;
 use DreamFactory\Core\Database\Schema\ProcedureSchema;
 use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
-use DreamFactory\Core\Database\Components\Schema;
-use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\Enums\DbSimpleTypes;
+use DreamFactory\Core\SqlDb\Database\Schema\SqlSchema;
 
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
  */
-class OracleSchema extends Schema
+class OracleSchema extends SqlSchema
 {
-    /**
-     * Underlying database provides field-level schema, i.e. SQL (true) vs NoSQL (false)
-     */
-    const PROVIDES_FIELD_SCHEMA = true;
-
     /**
      * Default fetch mode, base class uses NAMED which OCI8 does not support
      */
@@ -35,19 +30,6 @@ class OracleSchema extends Schema
         // new no sequence identity setting from 12c
         //        'pk' => 'NUMBER GENERATED ALWAYS AS IDENTITY',
     ];
-
-    /**
-     * @inheritdoc
-     */
-    public function getSupportedResourceTypes()
-    {
-        return [
-            DbResourceTypes::TYPE_TABLE,
-            DbResourceTypes::TYPE_VIEW,
-            DbResourceTypes::TYPE_PROCEDURE,
-            DbResourceTypes::TYPE_FUNCTION
-        ];
-    }
 
     protected function translateSimpleColumnTypes(array &$info)
     {
@@ -72,6 +54,18 @@ class OracleSchema extends Schema
                 // check foreign tables
                 break;
 
+            case DbSimpleTypes::TYPE_DATETIME:
+            case DbSimpleTypes::TYPE_TIME:
+            case DbSimpleTypes::TYPE_TIMESTAMP:
+                $info['type'] = 'timestamp';
+                break;
+
+            case DbSimpleTypes::TYPE_DATETIME_TZ:
+            case DbSimpleTypes::TYPE_TIME_TZ:
+            case DbSimpleTypes::TYPE_TIMESTAMP_TZ:
+                $info['type'] = 'timestamp with time zone';
+                break;
+
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
                 $info['type'] = 'timestamp';
@@ -94,18 +88,17 @@ class OracleSchema extends Schema
                 $info['type'] = 'number';
                 $info['type_extras'] = '(10)';
                 break;
+
             case DbSimpleTypes::TYPE_FLOAT:
                 $info['type'] = 'BINARY_FLOAT';
                 break;
+
             case DbSimpleTypes::TYPE_DOUBLE:
                 $info['type'] = 'BINARY_DOUBLE';
                 break;
+
             case DbSimpleTypes::TYPE_DECIMAL:
                 $info['type'] = 'NUMBER';
-                break;
-            case DbSimpleTypes::TYPE_DATETIME:
-            case DbSimpleTypes::TYPE_TIME:
-                $info['type'] = 'TIMESTAMP';
                 break;
 
             case DbSimpleTypes::TYPE_BOOLEAN:
@@ -214,6 +207,7 @@ class OracleSchema extends Schema
                 break;
 
             case 'timestamp':
+            case 'timestamp with time zone':
                 $length = (isset($info['length'])) ? $info['length'] : ((isset($info['size'])) ? $info['size'] : null);
                 if (isset($length)) {
                     $info['type_extras'] = "($length)";
@@ -233,7 +227,11 @@ class OracleSchema extends Schema
         $type = (isset($info['type'])) ? $info['type'] : null;
         $typeExtras = (isset($info['type_extras'])) ? $info['type_extras'] : null;
 
-        $definition = $type . $typeExtras;
+        if ('timestamp with time zone' === $type) {
+            $definition = 'timestamp' . $typeExtras . ' with time zone';
+        } else {
+            $definition = $type . $typeExtras;
+        }
 
         $default = (isset($info['default'])) ? $info['default'] : null;
         if (isset($default)) {
@@ -354,7 +352,7 @@ EOD;
         $c->autoIncrement = array_get($column, 'auto_increment', false);
         $c->quotedName = $this->quoteColumnName($c->name);
         $c->allowNull = $column['nullable'] === 'Y';
-        $c->isPrimaryKey = strpos(strval(array_get($column,'key')), 'P') !== false;
+        $c->isPrimaryKey = strpos(strval(array_get($column, 'key')), 'P') !== false;
         $c->dbType = $column['data_type'];
         $c->precision = intval($column['data_precision']);
         $c->scale = intval($column['data_scale']);
@@ -815,20 +813,39 @@ SQL;
         return $extras;
     }
 
+    public static function getNativeDateTimeFormat($type)
+    {
+        switch (strtolower(strval($type))) {
+            case DbSimpleTypes::TYPE_DATE:
+                return 'Y-m-d';
+
+            case DbSimpleTypes::TYPE_TIME:
+                return 'H:i:s.u';
+            case DbSimpleTypes::TYPE_TIME_TZ:
+                return 'H:i:s.u P';
+
+            case DbSimpleTypes::TYPE_DATETIME:
+            case DbSimpleTypes::TYPE_TIMESTAMP:
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
+                return 'Y-m-d H:i:s.u';
+
+            case DbSimpleTypes::TYPE_DATETIME_TZ:
+            case DbSimpleTypes::TYPE_TIMESTAMP_TZ:
+                return 'Y-m-d H:i:s.u P';
+        }
+
+        return null;
+    }
+
     public function getTimestampForSet()
     {
         return $this->connection->raw('(CURRENT_TIMESTAMP)');
     }
 
-//    /**
-//     * Extracts the PHP type from DB type.
-//     *
-//     * @param ColumnSchema $column
-//     * @param string       $dbType DB type
-//     */
-//    public function extractType(ColumnSchema $column, $dbType)
-//    {
-//        parent::extractType($column, $dbType);
+    public function extractType(ColumnSchema $column, $dbType)
+    {
+        parent::extractType($column, $dbType);
 //        if (strpos($dbType, 'FLOAT') !== false) {
 //            $column->phpType = 'double';
 //        }
@@ -847,8 +864,16 @@ SQL;
 //        } else {
 //            $column->phpType = 'string';
 //        }
-//    }
-//
+        if ((false !== strpos($dbType, ' with time zone')) && (false !== strpos($dbType, ' with local time zone'))) {
+            switch ($column->type) {
+                case DbSimpleTypes::TYPE_TIMESTAMP:
+                    $column->type = DbSimpleTypes::TYPE_TIMESTAMP_TZ;
+                    break;
+
+            }
+        }
+    }
+
     /**
      * Extracts the default value for the column.
      * The value is typecasted to correct PHP type.
