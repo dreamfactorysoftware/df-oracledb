@@ -66,7 +66,7 @@ class OracleTable extends Table
                 $item = (array)$item;
                 foreach ($item as $field => &$value) {
                     if ($fieldInfo = $schema->getColumn($field, true)) {
-                        $value = $this->schema->typecastToClient($value, $fieldInfo);
+                        $value = $this->parent->getSchema()->typecastToClient($value, $fieldInfo);
                     }
                 }
 

@@ -17,45 +17,32 @@ use DreamFactory\Core\SqlDb\Resources\Table;
  */
 class OracleDb extends SqlDb
 {
+    protected static $resources = [
+        Schema::RESOURCE_NAME          => [
+            'name'       => Schema::RESOURCE_NAME,
+            'class_name' => Schema::class,
+            'label'      => 'Schema',
+        ],
+        Table::RESOURCE_NAME           => [
+            'name'       => Table::RESOURCE_NAME,
+            'class_name' => OracleTable::class,
+            'label'      => 'Tables',
+        ],
+        StoredProcedure::RESOURCE_NAME => [
+            'name'       => StoredProcedure::RESOURCE_NAME,
+            'class_name' => StoredProcedure::class,
+            'label'      => 'Stored Procedures',
+        ],
+        StoredFunction::RESOURCE_NAME  => [
+            'name'       => StoredFunction::RESOURCE_NAME,
+            'class_name' => StoredFunction::class,
+            'label'      => 'Stored Functions',
+        ],
+    ];
+
     public static function adaptConfig(array &$config)
     {
         $config['driver'] = 'oracle';
         parent::adaptConfig($config);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getResources($only_handlers = false)
-    {
-        $types = $this->getSchema()->getSupportedResourceTypes();
-        $resources = [
-            Schema::RESOURCE_NAME => [
-                'name'       => Schema::RESOURCE_NAME,
-                'class_name' => Schema::class,
-                'label'      => 'Schema',
-            ],
-            Table::RESOURCE_NAME  => [
-                'name'       => Table::RESOURCE_NAME,
-                'class_name' => OracleTable::class,
-                'label'      => 'Tables',
-            ]
-        ];
-        if (in_array(DbResourceTypes::TYPE_PROCEDURE, $types)) {
-            $resources[StoredProcedure::RESOURCE_NAME] = [
-                'name'       => StoredProcedure::RESOURCE_NAME,
-                'class_name' => StoredProcedure::class,
-                'label'      => 'Stored Procedures',
-            ];
-        }
-        if (in_array(DbResourceTypes::TYPE_FUNCTION, $types)) {
-            $resources[StoredFunction::RESOURCE_NAME] = [
-                'name'       => StoredFunction::RESOURCE_NAME,
-                'class_name' => StoredFunction::class,
-                'label'      => 'Stored Functions',
-            ];
-        }
-
-        return ($only_handlers) ? $resources : array_values($resources);
     }
 }
