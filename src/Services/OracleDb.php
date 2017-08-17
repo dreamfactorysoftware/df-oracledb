@@ -40,6 +40,20 @@ class OracleDb extends SqlDb
         ],
     ];
 
+    public function __construct($settings = [])
+    {
+        parent::__construct($settings);
+
+        $prefix = parent::getConfigBasedCachePrefix();
+        if ($service = array_get($this->config, 'service_name')) {
+            $prefix = $service . $prefix;
+        }
+        if ($tns = array_get($this->config, 'tns')) {
+            $prefix = $tns . $prefix;
+        }
+        $this->setConfigBasedCachePrefix($prefix);
+    }
+
     public static function adaptConfig(array &$config)
     {
         $config['driver'] = 'oracle';
