@@ -3,6 +3,8 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- DF-1160 Correct resource name usage for procedures and functions when pulling parameters
 
 ## [0.12.0] - 2017-08-17
 ### Changed

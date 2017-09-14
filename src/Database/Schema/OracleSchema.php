@@ -580,11 +580,11 @@ FROM all_arguments
 WHERE OBJECT_NAME = :object AND OWNER = :schema AND DATA_LEVEL = '0'
 MYSQL;
 
-        $bindings = [':object' => $holder->name, ':schema' => $holder->schemaName];
-        if (false !== $pos = strpos($holder->name, '.')) {
+        $bindings = [':object' => $holder->resourceName, ':schema' => $holder->schemaName];
+        if (false !== $pos = strpos($holder->resourceName, '.')) {
             $sql .= ' AND PACKAGE_NAME = :package';
-            $bindings[':object'] = substr($holder->name, $pos + 1);
-            $bindings[':package'] = substr($holder->name, 0, $pos);
+            $bindings[':object'] = substr($holder->resourceName, $pos + 1);
+            $bindings[':package'] = substr($holder->resourceName, 0, $pos);
         }
 
         $rows = $this->connection->select($sql, $bindings);
