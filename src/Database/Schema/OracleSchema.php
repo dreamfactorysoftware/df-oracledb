@@ -244,16 +244,10 @@ class OracleSchema extends SqlSchema
             $definition .= ' DEFAULT ' . $default;
         }
 
-        $isUniqueKey = (isset($info['is_unique'])) ? filter_var($info['is_unique'], FILTER_VALIDATE_BOOLEAN) : false;
-        $isPrimaryKey =
-            (isset($info['is_primary_key'])) ? filter_var($info['is_primary_key'], FILTER_VALIDATE_BOOLEAN) : false;
-        if ($isPrimaryKey && $isUniqueKey) {
-            throw new \Exception('Unique and Primary designations not allowed simultaneously.');
-        }
-        if ($isUniqueKey) {
-            $definition .= ' UNIQUE';
-        } elseif ($isPrimaryKey) {
+        if (isset($info['is_primary_key']) && filter_var($info['is_primary_key'], FILTER_VALIDATE_BOOLEAN)) {
             $definition .= ' PRIMARY KEY';
+        } elseif (isset($info['is_unique']) && filter_var($info['is_unique'], FILTER_VALIDATE_BOOLEAN)) {
+            $definition .= ' UNIQUE';
         }
 
         $allowNull = (isset($info['allow_null'])) ? filter_var($info['allow_null'], FILTER_VALIDATE_BOOLEAN) : false;
@@ -414,19 +408,20 @@ EOD;
     protected function findTableReferences()
     {
         $sql = <<<EOD
-		SELECT D.constraint_type, C.position, D.r_constraint_name,
-            C.owner as table_schema,
-            C.table_name as table_name,
-		    C.column_name as column_name,
-            E.owner as referenced_table_schema,
-            E.table_name as referenced_table_name,
-            F.column_name as referenced_column_name
-        FROM ALL_CONS_COLUMNS C
-        inner join ALL_constraints D on D.OWNER = C.OWNER and D.constraint_name = C.constraint_name
-        left join ALL_constraints E on E.OWNER = D.r_OWNER and E.constraint_name = D.r_constraint_name
-        left join ALL_cons_columns F on F.OWNER = E.OWNER and F.constraint_name = E.constraint_name and F.position = C.position
-        WHERE D.constraint_type = 'R'
-        ORDER BY D.constraint_name, C.position
+		SELECT F.constraint_type,
+            A.owner as table_schema,
+            A.table_name as table_name,
+		    B.column_name as column_name,
+            C.owner as referenced_table_schema,
+            C.table_name as referenced_table_name,
+            D.column_name as referenced_column_name
+        FROM ALL_CONSTRAINTS A
+        left join ALL_CONS_COLUMNS B on B.OWNER = A.OWNER and B.constraint_name = A.constraint_name
+        left join ALL_CONSTRAINTS C on C.OWNER = A.r_OWNER and C.constraint_name = A.r_constraint_name
+        left join ALL_CONS_COLUMNS D on D.OWNER = C.OWNER and D.constraint_name = C.constraint_name and D.position = B.position
+        left join ALL_CONS_COLUMNS E on E.OWNER = A.OWNER and E.table_name = B.table_name and E.column_name = B.column_name
+        left join ALL_CONSTRAINTS F on F.OWNER = E.OWNER and F.constraint_name = E.constraint_name and F.constraint_type IN ('P','U')
+        WHERE A.constraint_type = 'R' AND A.OWNER not in ('SYSTEM','SYS','SYSAUX')
 EOD;
 
         return $this->connection->select($sql);
@@ -585,11 +580,11 @@ FROM all_arguments
 WHERE OBJECT_NAME = :object AND OWNER = :schema AND DATA_LEVEL = '0'
 MYSQL;
 
-        $bindings = [':object' => $holder->name, ':schema' => $holder->schemaName];
-        if (false !== $pos = strpos($holder->name, '.')) {
+        $bindings = [':object' => $holder->resourceName, ':schema' => $holder->schemaName];
+        if (false !== $pos = strpos($holder->resourceName, '.')) {
             $sql .= ' AND PACKAGE_NAME = :package';
-            $bindings[':object'] = substr($holder->name, $pos + 1);
-            $bindings[':package'] = substr($holder->name, 0, $pos);
+            $bindings[':object'] = substr($holder->resourceName, $pos + 1);
+            $bindings[':package'] = substr($holder->resourceName, 0, $pos);
         }
 
         $rows = $this->connection->select($sql, $bindings);
