@@ -1,7 +1,9 @@
 <?php
+
 namespace DreamFactory\Core\Oracle;
 
 use DreamFactory\Core\Components\DbSchemaExtensions;
+use DreamFactory\Core\Enums\LicenseLevel;
 use DreamFactory\Core\Enums\ServiceTypeGroups;
 use DreamFactory\Core\Oracle\Database\Connectors\OracleConnector;
 use DreamFactory\Core\Oracle\Database\OracleConnection;
@@ -30,12 +32,13 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
         $this->app->resolving('df.service', function (ServiceManager $df) {
             $df->addType(
                 new ServiceType([
-                    'name'            => 'oracle',
-                    'label'           => 'Oracle',
-                    'description'     => 'Database service supporting SQL connections.',
-                    'group'           => ServiceTypeGroups::DATABASE,
-                    'config_handler'  => OracleDbConfig::class,
-                    'factory'         => function ($config) {
+                    'name'                  => 'oracle',
+                    'label'                 => 'Oracle',
+                    'description'           => 'Database service supporting SQL connections.',
+                    'group'                 => ServiceTypeGroups::DATABASE,
+                    'subscription_required' => LicenseLevel::SILVER,
+                    'config_handler'        => OracleDbConfig::class,
+                    'factory'               => function ($config) {
                         return new OracleDb($config);
                     },
                 ])
