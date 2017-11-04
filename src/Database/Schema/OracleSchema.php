@@ -267,22 +267,6 @@ class OracleSchema extends SqlSchema
     }
 
     /**
-     * @param string $table table name with optional schema name prefix, uses default schema name prefix is not
-     *                      provided.
-     *
-     * @return array tuple as ($schemaName,$tableName)
-     */
-    protected function getSchemaTableName($table)
-    {
-        $table = strtoupper($table);
-        if (count($parts = explode('.', str_replace('"', '', $table))) > 1) {
-            return [$parts[0], $parts[1]];
-        } else {
-            return [$this->getDefaultSchema(), $parts[0]];
-        }
-    }
-
-    /**
      * @inheritdoc
      */
     protected function findColumns(TableSchema $table)
@@ -429,13 +413,9 @@ EOD;
 
     protected function findSchemaNames()
     {
-        if ('SYSTEM' == $this->getDefaultSchema()) {
-            $sql = 'SELECT username FROM all_users';
-        } else {
-            $sql = <<<SQL
+        $sql = <<<SQL
 SELECT username FROM all_users WHERE username not in ('SYSTEM','SYS','SYSAUX')
 SQL;
-        }
 
         return $this->selectColumn($sql);
     }
@@ -453,10 +433,7 @@ EOD;
             $sql .= " AND owner = '$schema'";
         }
 
-        $defaultSchema = $this->getNamingSchema();
-
         $rows = $this->connection->select($sql);
-        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
 
         $names = [];
         foreach ($rows as $row) {
@@ -464,7 +441,7 @@ EOD;
             $schemaName = array_get($row, 'TABLE_SCHEMA', '');
             $resourceName = array_get($row, 'TABLE_NAME', '');
             $internalName = $schemaName . '.' . $resourceName;
-            $name = ($addSchema) ? $internalName : $resourceName;
+            $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
             $settings = compact('schemaName', 'resourceName', 'name', 'internalName', 'quotedName');
             $names[strtolower($name)] = new TableSchema($settings);
@@ -486,10 +463,7 @@ EOD;
             $sql .= " AND owner = '$schema'";
         }
 
-        $defaultSchema = $this->getNamingSchema();
-
         $rows = $this->connection->select($sql);
-        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
 
         $names = [];
         foreach ($rows as $row) {
@@ -497,7 +471,7 @@ EOD;
             $schemaName = array_get($row, 'TABLE_SCHEMA', '');
             $resourceName = array_get($row, 'TABLE_NAME', '');
             $internalName = $schemaName . '.' . $resourceName;
-            $name = ($addSchema) ? $internalName : $resourceName;
+            $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
             $settings = compact('schemaName', 'resourceName', 'name', 'internalName', 'quotedName');
             $settings['isView'] = true;
@@ -543,16 +517,13 @@ MYSQL;
         $rows2 = $this->connection->select($sql, $bindings);
         $rows = array_merge($rows, $rows2);
 
-        $defaultSchema = $this->getNamingSchema();
-        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
-
         $names = [];
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
             $resourceName = array_get($row, 'OBJECT_NAME');
             $schemaName = $schema;
             $internalName = $schemaName . '.' . $resourceName;
-            $name = ($addSchema) ? $internalName : $resourceName;
+            $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);
             if (!empty($addPackage = array_get($row, 'PROCEDURE_NAME'))) {
                 $resourceName .= '.' . $addPackage;
@@ -710,24 +681,6 @@ MYSQL;
     }
 
     /**
-     * @inheritdoc
-     */
-    public function checkIntegrity($check = true, $schema = '')
-    {
-        if ($schema === '') {
-            $schema = $this->getDefaultSchema();
-        }
-        $mode = $check ? 'ENABLE' : 'DISABLE';
-        $query = "SELECT CONSTRAINT_NAME FROM USER_CONSTRAINTS WHERE TABLE_NAME=:t AND OWNER=:o";
-        foreach ($this->getTableNames($schema) as $table) {
-            $constraints = $this->selectColumn($query, [':t' => $table->resourceName, ':o' => $table->schemaName]);
-            foreach ($constraints as $constraint) {
-                $this->connection->statement("ALTER TABLE {$table->quotedName} $mode CONSTRAINT \"{$constraint}\"");
-            }
-        }
-    }
-
-    /**
      * {@InheritDoc}
      */
     public function addForeignKey($name, $table, $columns, $refTable, $refColumns, $delete = null, $update = null)
@@ -808,8 +761,16 @@ SQL;
         return $extras;
     }
 
-    public static function getNativeDateTimeFormat($type)
+    public static function getNativeDateTimeFormat($field_info)
     {
+        $type = DbSimpleTypes::TYPE_STRING;
+        if (is_string($field_info)) {
+            $type = $field_info;
+        } elseif ($field_info instanceof ColumnSchema) {
+            $type = $field_info->type;
+        } elseif ($field_info instanceof ParameterSchema) {
+            $type = $field_info->type;
+        }
         switch (strtolower(strval($type))) {
             case DbSimpleTypes::TYPE_DATE:
                 return 'Y-m-d';
