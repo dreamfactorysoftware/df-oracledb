@@ -30,7 +30,7 @@
   },
   "require":     {
     "dreamfactory/df-sqldb": "~0.14.0",
-    "yajra/laravel-oci8":    "5.4.*"
+    "yajra/laravel-oci8":    "5.5.*"
   },
   "autoload":    {
     "psr-4": {
