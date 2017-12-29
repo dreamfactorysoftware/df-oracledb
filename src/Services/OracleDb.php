@@ -3,11 +3,9 @@
 namespace DreamFactory\Core\Oracle\Services;
 
 use DreamFactory\Core\Oracle\Resources\OracleTable;
-use DreamFactory\Core\SqlDb\Services\SqlDb;
-use DreamFactory\Core\Enums\DbResourceTypes;
-use DreamFactory\Core\SqlDb\Resources\Schema;
 use DreamFactory\Core\SqlDb\Resources\StoredFunction;
 use DreamFactory\Core\SqlDb\Resources\StoredProcedure;
+use DreamFactory\Core\SqlDb\Services\SqlDb;
 use DreamFactory\Core\SqlDb\Resources\Table;
 
 /**
@@ -17,29 +15,11 @@ use DreamFactory\Core\SqlDb\Resources\Table;
  */
 class OracleDb extends SqlDb
 {
-    protected static $resources = [
-        Schema::RESOURCE_NAME          => [
-            'name'       => Schema::RESOURCE_NAME,
-            'class_name' => Schema::class,
-            'label'      => 'Schema',
-        ],
-        Table::RESOURCE_NAME           => [
-            'name'       => Table::RESOURCE_NAME,
-            'class_name' => OracleTable::class,
-            'label'      => 'Tables',
-        ],
-        StoredProcedure::RESOURCE_NAME => [
-            'name'       => StoredProcedure::RESOURCE_NAME,
-            'class_name' => StoredProcedure::class,
-            'label'      => 'Stored Procedures',
-        ],
-        StoredFunction::RESOURCE_NAME  => [
-            'name'       => StoredFunction::RESOURCE_NAME,
-            'class_name' => StoredFunction::class,
-            'label'      => 'Stored Functions',
-        ],
-    ];
-
+    /**
+     * OracleDb constructor.
+     * @param array $settings
+     * @throws \Exception
+     */
     public function __construct($settings = [])
     {
         parent::__construct($settings);
@@ -52,6 +32,26 @@ class OracleDb extends SqlDb
             $prefix = $tns . $prefix;
         }
         $this->setConfigBasedCachePrefix($prefix);
+    }
+
+    public function getResourceHandlers()
+    {
+        $handlers = parent::getResourceHandlers();
+
+        // local override
+        $handlers[Table::RESOURCE_NAME]['class_name'] = OracleTable::class;
+        $handlers[StoredProcedure::RESOURCE_NAME] = [
+            'name'       => StoredProcedure::RESOURCE_NAME,
+            'class_name' => StoredProcedure::class,
+            'label'      => 'Stored Procedure',
+        ];
+        $handlers[StoredFunction::RESOURCE_NAME] = [
+            'name'       => StoredFunction::RESOURCE_NAME,
+            'class_name' => StoredFunction::class,
+            'label'      => 'Stored Function',
+        ];
+
+        return $handlers;
     }
 
     public static function adaptConfig(array &$config)

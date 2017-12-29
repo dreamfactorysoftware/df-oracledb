@@ -23,14 +23,14 @@
     }
   ],
   "support":     {
-    "email":  "support@dreamfactory.com",
+    "email":  "dspsupport@dreamfactory.com",
     "source": "https://github.com/dreamfactorysoftware/df-oracledb",
     "issues": "https://github.com/dreamfactorysoftware/df-oracledb/issues",
     "wiki":   "https://wiki.dreamfactory.com"
   },
   "require":     {
-    "dreamfactory/df-sqldb": "~0.14.0",
-    "yajra/laravel-oci8":    "5.4.*"
+    "dreamfactory/df-sqldb": "~0.15.0",
+    "yajra/laravel-oci8":    "5.5.*"
   },
   "autoload":    {
     "psr-4": {
@@ -39,7 +39,12 @@
   },
   "extra":       {
     "branch-alias": {
-      "dev-develop": "0.14.x-dev"
+      "dev-develop": "0.15.x-dev"
+    },
+    "laravel": {
+      "providers": [
+        "DreamFactory\\Core\\Oracle\\ServiceProvider"
+      ]
     }
   }
 }

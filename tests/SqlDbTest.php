@@ -10,7 +10,7 @@ use DreamFactory\Core\SqlDb\Resources\StoredFunction;
 use DreamFactory\Core\Testing\TestServiceRequest;
 use DreamFactory\Core\Enums\ApiOptions;
 
-class SqlDbTest extends \DreamFactory\Core\Testing\DbServiceTestCase
+class SqlDbTest extends \DreamFactory\Core\Database\Testing\DbServiceTestCase
 {
     /**
      * @const string

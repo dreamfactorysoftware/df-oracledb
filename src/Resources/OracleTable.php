@@ -75,7 +75,7 @@ class OracleTable extends Table
 
             $idFields = array_get($extras, ApiOptions::ID_FIELD);
             if (empty($idFields)) {
-                $idFields = $schema->primaryKey;
+                $idFields = $schema->getPrimaryKey();
             }
             $idFields = static::fieldsToArray($idFields);
             if (1 == count($idFields)) {
