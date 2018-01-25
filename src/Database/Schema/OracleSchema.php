@@ -257,11 +257,9 @@ class OracleSchema extends SqlSchema
     }
 
     /**
-     * @param boolean $refresh if we need to refresh schema cache.
-     *
-     * @return string default schema.
+     * @inheritdoc
      */
-    public function getDefaultSchema($refresh = false)
+    public function getDefaultSchema()
     {
         return strtoupper($this->getUserName());
     }
@@ -269,9 +267,18 @@ class OracleSchema extends SqlSchema
     /**
      * @inheritdoc
      */
-    protected function findColumns(TableSchema $table)
+    protected function loadTableColumns(TableSchema $table)
     {
-//        $params = [$table->resourceName, $table->schemaName];
+        $params = [':table1' => $table->resourceName, ':schema1' => $table->schemaName];
+
+        // get all triggers for this table to check for auto incrementation
+        $sql = <<<EOD
+SELECT trigger_body FROM ALL_TRIGGERS
+WHERE table_owner = :schema1 and table_name = :table1
+and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
+EOD;
+        $triggers = $this->selectColumn($sql, $params);
+
         $sql = <<<EOD
 SELECT a.column_name, a.data_type, a.data_precision, a.data_scale, a.data_length, a.nullable, a.data_default,
     (   SELECT D.constraint_type
@@ -288,33 +295,88 @@ INNER JOIN ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A
 LEFT JOIN user_col_comments com ON (A.table_name = com.table_name AND A.column_name = com.column_name)
 LEFT JOIN all_coll_types ct ON (A.data_type = ct.type_name AND A.data_type_owner = ct.owner)
 LEFT JOIN all_nested_tables nt ON (ct.type_name = nt.table_type_name AND ct.owner = nt.table_type_owner)
-WHERE a.owner = '{$table->schemaName}' and b.object_name = '{$table->resourceName}' and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
+WHERE a.owner = :schema1 and b.object_name = :table1 and (b.object_type = 'TABLE' or b.object_type = 'VIEW')
 ORDER by a.column_id
 EOD;
 
-        if (!empty($columns = $this->connection->select($sql))) {
-            $sql = <<<EOD
-SELECT trigger_body FROM ALL_TRIGGERS
-WHERE table_owner = '{$table->schemaName}' and table_name = '{$table->resourceName}'
-and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
-EOD;
-
-            $trig = $this->connection->select($sql);
-            if (!empty($trig[0])) {
-                $row = array_change_key_case((array)$trig[0], CASE_LOWER);
-                foreach ($columns as &$column) {
-                    $column = array_change_key_case((array)$column, CASE_LOWER);
-                    if ('P' === array_get($column, 'key')) {
-                        $column['auto_increment'] = true;
-                        $seq = stristr(array_get($row, 'trigger_body', ''), '.nextval', true);
-                        $seq = substr($seq, strrpos($seq, ' ') + 1);
-                        $column['sequence'] = $seq;
-                    }
+        $columns = $this->connection->select($sql, $params);
+        foreach ($columns as $column) {
+            $column = array_change_key_case((array)$column, CASE_LOWER);
+            $c = new ColumnSchema(['name' => $column['column_name']]);
+            $c->quotedName = $this->quoteColumnName($c->name);
+            $c->autoIncrement = array_get_bool($column, 'identity_column');
+            $c->allowNull = $column['nullable'] === 'Y';
+            $c->isPrimaryKey = strpos(strval(array_get($column, 'key')), 'P') !== false;
+            $c->dbType = $column['data_type'];
+            $c->precision = intval($column['data_precision']);
+            $c->scale = intval($column['data_scale']);
+            // all of this is for consistency across drivers
+            if ($c->precision > 0) {
+                if ($c->scale <= 0) {
+                    $c->size = $c->precision;
+                    $c->scale = null;
+                }
+            } else {
+                $c->precision = null;
+                $c->scale = null;
+                $c->size = intval($column['data_length']);
+                if ($c->size <= 0) {
+                    $c->size = null;
                 }
             }
-        }
+            $this->extractLimit($c, $c->dbType);
+            $c->fixedLength = $this->extractFixedLength($c->dbType);
+            $c->supportsMultibyte = $this->extractMultiByteSupport($c->dbType);
+            $collectionType = array_get($column, 'collection_type');
+            switch (strtolower($collectionType)) {
+                case 'table':
+                    $this->extractType($c, 'table');
+                    $nestedTable = array_get($column, 'nested_table_name');
+                    $nestedTableOwner = array_get($column, 'nested_table_owner');
+                    $sql = <<<EOD
+SELECT column_name, data_type, data_precision, data_scale, data_length, nullable, data_default
+FROM ALL_NESTED_TABLE_COLS
+WHERE owner = '$nestedTableOwner' and table_name = '$nestedTable'
+and HIDDEN_COLUMN = 'NO'
+EOD;
 
-        return $columns;
+                    $result = $this->connection->select($sql);
+                    $nestedColumns = [];
+                    foreach ($result as $nestedColumn) {
+                        $nestedColumn = array_change_key_case((array)$nestedColumn, CASE_LOWER);
+                        $nc = $this->createColumn($nestedColumn);
+                        $nestedColumns[$nc->name] = $nc->toArray();
+                    }
+                    $c->native = ['nested_columns' => $nestedColumns];
+                    break;
+                case 'varying array':
+                    $this->extractType($c, 'array');
+                    break;
+                default:
+                    $this->extractType($c, $c->dbType);
+                    break;
+            }
+            $this->extractDefault($c, $column['data_default']);
+            $c->comment = array_get($column, 'column_comment', '');
+
+            if ($c->isPrimaryKey) {
+                foreach ($triggers as $trigger) {
+                    if (false !== stripos($trigger, $c->name)) {
+                        $c->autoIncrement = true;
+                        $seq = stristr($trigger, '.nextval', true);
+                        $seq = substr($seq, strrpos($seq, ' ') + 1);
+                        $table->sequenceName = $seq;
+                    }
+                }
+                if ($c->autoIncrement) {
+                    if ((DbSimpleTypes::TYPE_INTEGER === $c->type)) {
+                        $c->type = DbSimpleTypes::TYPE_ID;
+                    }
+                }
+                $table->addPrimaryKey($c->name);
+            }
+            $table->addColumn($c);
+        }
     }
 
     /**
@@ -389,29 +451,51 @@ EOD;
     /**
      * @inheritdoc
      */
-    protected function findTableReferences()
+    protected function getTableConstraints($schema = '')
     {
-        $sql = <<<EOD
-		SELECT F.constraint_type,
-            A.owner as table_schema,
-            A.table_name as table_name,
-		    B.column_name as column_name,
-            C.owner as referenced_table_schema,
-            C.table_name as referenced_table_name,
-            D.column_name as referenced_column_name
+        if (is_array($schema)) {
+            $schema = implode("','", $schema);
+        }
+
+        $sql = <<<SQL
+		SELECT A.constraint_type, A.constraint_name, A.owner as table_schema, A.table_name as table_name, B.column_name as column_name,
+            C.owner as referenced_table_schema, C.table_name as referenced_table_name, D.column_name as referenced_column_name
         FROM ALL_CONSTRAINTS A
         left join ALL_CONS_COLUMNS B on B.OWNER = A.OWNER and B.constraint_name = A.constraint_name
         left join ALL_CONSTRAINTS C on C.OWNER = A.r_OWNER and C.constraint_name = A.r_constraint_name
         left join ALL_CONS_COLUMNS D on D.OWNER = C.OWNER and D.constraint_name = C.constraint_name and D.position = B.position
-        left join ALL_CONS_COLUMNS E on E.OWNER = A.OWNER and E.table_name = B.table_name and E.column_name = B.column_name
-        left join ALL_CONSTRAINTS F on F.OWNER = E.OWNER and F.constraint_name = E.constraint_name and F.constraint_type IN ('P','U')
-        WHERE A.constraint_type = 'R' AND A.OWNER not in ('SYSTEM','SYS','SYSAUX')
-EOD;
+        WHERE A.OWNER in ('{$schema}')
+SQL;
 
-        return $this->connection->select($sql);
+        $results = $this->connection->select($sql);
+        $constraints = [];
+        foreach ($results as $row) {
+            $row = array_change_key_case((array)$row, CASE_LOWER);
+            $ts = strtolower($row['table_schema']);
+            $tn = strtolower($row['table_name']);
+            $cn = strtolower($row['constraint_name']);
+            if ('R' === $row['constraint_type']) {
+                $row['constraint_type'] = 'foreign key';
+            }
+            $colName = array_get($row, 'column_name');
+            $refColName = array_get($row, 'referenced_column_name');
+            if (isset($constraints[$ts][$tn][$cn])) {
+                $constraints[$ts][$tn][$cn]['column_name'] =
+                    array_merge((array)$constraints[$ts][$tn][$cn]['column_name'], (array)$colName);
+
+                if (isset($refColName)) {
+                    $constraints[$ts][$tn][$cn]['referenced_column_name'] =
+                        array_merge((array)$constraints[$ts][$tn][$cn]['referenced_column_name'], (array)$refColName);
+                }
+            } else {
+                $constraints[$ts][$tn][$cn] = $row;
+            }
+        }
+
+        return $constraints;
     }
 
-    protected function findSchemaNames()
+    public function getSchemas()
     {
         $sql = <<<SQL
 SELECT username FROM all_users WHERE username not in ('SYSTEM','SYS','SYSAUX')
@@ -423,7 +507,7 @@ SQL;
     /**
      * @inheritdoc
      */
-    protected function findTableNames($schema = '')
+    protected function getTableNames($schema = '')
     {
         $sql = <<<EOD
 SELECT table_name, owner as table_schema FROM all_tables WHERE nested = 'NO'
@@ -453,7 +537,7 @@ EOD;
     /**
      * @inheritdoc
      */
-    protected function findViewNames($schema = '')
+    protected function getViewNames($schema = '')
     {
         $sql = <<<EOD
 SELECT object_name as table_name, owner as table_schema FROM all_objects WHERE object_type = 'VIEW'
@@ -484,7 +568,7 @@ EOD;
     /**
      * @inheritdoc
      */
-    protected function findRoutineNames($type, $schema = '')
+    protected function getRoutineNames($type, $schema = '')
     {
         $bindings = [':type' => $type];
         $where = 'OBJECT_TYPE = :type';
