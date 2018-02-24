@@ -3,6 +3,9 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- DF-1303 Correct native date and time format
+
 ## [0.15.1] - 2018-01-25 
 ### Added
 - DF-1275 Initial support for multi-column constraints
