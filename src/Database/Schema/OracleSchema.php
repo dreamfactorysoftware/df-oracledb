@@ -857,7 +857,7 @@ SQL;
         }
         switch (strtolower(strval($type))) {
             case DbSimpleTypes::TYPE_DATE:
-                return 'Y-m-d';
+                return 'd-M-y';
 
             case DbSimpleTypes::TYPE_TIME:
                 return 'H:i:s.u';
@@ -868,11 +868,11 @@ SQL;
             case DbSimpleTypes::TYPE_TIMESTAMP:
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
-                return 'Y-m-d H:i:s.u';
+                return 'd-M-y h.i.s.u A';
 
             case DbSimpleTypes::TYPE_DATETIME_TZ:
             case DbSimpleTypes::TYPE_TIMESTAMP_TZ:
-                return 'Y-m-d H:i:s.u P';
+                return 'd-M-y h.i.s.u A P';
         }
 
         return null;
