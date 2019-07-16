@@ -29,7 +29,7 @@
     "wiki":   "https://wiki.dreamfactory.com"
   },
   "require":     {
-    "dreamfactory/df-sqldb": "~0.15.1",
+    "dreamfactory/df-sqldb": "~0.16.0",
     "yajra/laravel-oci8":    "5.5.*"
   },
   "autoload":    {
