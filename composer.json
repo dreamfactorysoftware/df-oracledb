@@ -28,6 +28,8 @@
     "issues": "https://github.com/dreamfactorysoftware/df-oracledb/issues",
     "wiki":   "https://wiki.dreamfactory.com"
   },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
   "require":     {
     "dreamfactory/df-sqldb": "~0.16.0",
     "yajra/laravel-oci8":    "5.5.*"
