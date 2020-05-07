@@ -979,8 +979,9 @@ SQL;
                             $pdoType | \PDO::PARAM_INPUT_OUTPUT, -1, OCI_B_CURSOR);
                     } else {
                         $pdoType = $this->extractPdoType($paramSchema->type);
+                        $pdoLength = $this->extractPdoLength($paramSchema);
                         $this->bindParam($statement, ':' . $paramSchema->name, $values[$key],
-                            $pdoType | \PDO::PARAM_INPUT_OUTPUT, $paramSchema->length);
+                            $pdoType | \PDO::PARAM_INPUT_OUTPUT, $pdoLength);
                     }
                     break;
             }
@@ -1019,5 +1020,17 @@ SQL;
         }
 
         return false;
+    }
+
+    protected function extractPdoLength($paramSchema) {
+        switch (static::extractPhpType($paramSchema->type)) {
+            case 'string':
+                return 4000;
+            case 'boolean':
+                // TODO Find out how to fix it for boolean
+            case 'integer':
+            default:
+                return $paramSchema->length;
+        }
     }
 }
