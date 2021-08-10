@@ -24,6 +24,10 @@ class OracleConnector extends \Yajra\Oci8\Connectors\OracleConnector
      */
     public function createConnection($tns, array $config, array $options)
     {
+        \Log::warning("TNS used in the connection: ",[$tns]);
+        $configForLog = $config;
+        $configForLog["password"] = "****";
+        \Log::warning("All configs of the service: ",[$configForLog]);
         // add fallback in case driver is not set, will use pdo instead
         if (! in_array($config['driver'], ['oci8', 'pdo-via-oci8', 'oracle'])) {
             return parent::createConnection($tns, $config, $options);
