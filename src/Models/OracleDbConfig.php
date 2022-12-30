@@ -3,6 +3,7 @@ namespace DreamFactory\Core\Oracle\Models;
 
 use DreamFactory\Core\Exceptions\BadRequestException;
 use DreamFactory\Core\SqlDb\Models\SqlDbConfig;
+use Arr;
 
 /**
  * OracleDbConfig
@@ -28,15 +29,15 @@ class OracleDbConfig extends SqlDbConfig
     public function validate($data, $throwException = true)
     {
         $connection = $this->getAttribute('connection');
-        if (!empty(array_get($connection, 'tns'))) {
+        if (!empty(Arr::get($connection, 'tns'))) {
             return true; // overrides everything else
         }
 
-        if (empty(array_get($connection, 'host'))) {
+        if (empty(Arr::get($connection, 'host'))) {
             throw new BadRequestException("If not using TNS, connection information must contain host name.");
         }
 
-        if (empty(array_get($connection, 'database')) && empty(array_get($connection, 'service_name'))) {
+        if (empty(Arr::get($connection, 'database')) && empty(Arr::get($connection, 'service_name'))) {
             throw new BadRequestException("If not using TNS, connection information must contain either database (SID) or service_name (SERVICE_NAME).");
         }
 
