@@ -9,7 +9,7 @@ use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\SqlDb\Resources\Table;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
-
+use Arr;
 
 /**
  * Class Table
@@ -20,7 +20,7 @@ class OracleTable extends Table
 {
     protected function getQueryResults(TableSchema $schema, Builder $builder, $extras)
     {
-        $fields = array_get($extras, ApiOptions::FIELDS);
+        $fields = Arr::get($extras, ApiOptions::FIELDS);
         $nestedFields = [];
         $otherFields = [];
         if (!empty($fields)) {
@@ -73,7 +73,7 @@ class OracleTable extends Table
                 return $item;
             });
 
-            $idFields = array_get($extras, ApiOptions::ID_FIELD);
+            $idFields = Arr::get($extras, ApiOptions::ID_FIELD);
             if (empty($idFields)) {
                 $idFields = $schema->getPrimaryKey();
             }
@@ -85,15 +85,14 @@ class OracleTable extends Table
                 $result = [];
                 /** @var Collection $group */
                 foreach ($nestedResults as $group) {
-                    $record = array_only($group->first(), array_keys($otherFields));
+                    $record = Arr::only($group->first(), array_keys($otherFields));
                     foreach ($nestedFields as $nestedField => $nestedFieldInfo) {
-                        $nestedTableFields = array_keys((array)array_get($nestedFieldInfo->native, 'nested_columns'));
+                        $nestedTableFields = array_keys((array)Arr::get($nestedFieldInfo->native, 'nested_columns'));
                         $nestedOutput = [];
                         foreach ($group as $member) {
                             $nestedRecord = [];
                             foreach ($nestedTableFields as $nestedTableField) {
-                                $nestedRecord[$nestedTableField] = array_get($member,
-                                    $nestedField . '_' . $nestedTableField, array_get($member, $nestedTableField));
+                                $nestedRecord[$nestedTableField] = Arr::get($member, $nestedField . '_' . $nestedTableField, Arr::get($member, $nestedTableField));
                             }
                             $nestedOutput[] = $nestedRecord;
                         }
@@ -116,7 +115,7 @@ class OracleTable extends Table
     {
         switch ($field->type) {
             case DbSimpleTypes::TYPE_TABLE:
-                if (!empty($nestedTableFields = array_get($field->native, 'nested_columns'))) {
+                if (!empty($nestedTableFields = Arr::get($field->native, 'nested_columns'))) {
                     $nestedOutput = [];
                     foreach (array_keys($nestedTableFields) as $member) {
                         $nestedOutput[] = DB::raw($field->name . "_t.$member AS {$field->name}_$member");

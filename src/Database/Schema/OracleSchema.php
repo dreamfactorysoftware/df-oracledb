@@ -10,6 +10,7 @@ use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\SqlDb\Database\Schema\SqlSchema;
+use Arr;
 
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
@@ -306,7 +307,7 @@ EOD;
             $c->quotedName = $this->quoteColumnName($c->name);
             $c->autoIncrement = array_get_bool($column, 'identity_column');
             $c->allowNull = $column['nullable'] === 'Y';
-            $c->isPrimaryKey = strpos(strval(array_get($column, 'key')), 'P') !== false;
+            $c->isPrimaryKey = strpos(strval(Arr::get($column, 'key')), 'P') !== false;
             $c->dbType = $column['data_type'];
             $c->precision = intval($column['data_precision']);
             $c->scale = intval($column['data_scale']);
@@ -327,12 +328,12 @@ EOD;
             $this->extractLimit($c, $c->dbType);
             $c->fixedLength = $this->extractFixedLength($c->dbType);
             $c->supportsMultibyte = $this->extractMultiByteSupport($c->dbType);
-            $collectionType = array_get($column, 'collection_type');
+            $collectionType = Arr::get($column, 'collection_type');
             switch (strtolower($collectionType)) {
                 case 'table':
                     $this->extractType($c, 'table');
-                    $nestedTable = array_get($column, 'nested_table_name');
-                    $nestedTableOwner = array_get($column, 'nested_table_owner');
+                    $nestedTable = Arr::get($column, 'nested_table_name');
+                    $nestedTableOwner = Arr::get($column, 'nested_table_owner');
                     $sql = <<<EOD
 SELECT column_name, data_type, data_precision, data_scale, data_length, nullable, data_default
 FROM ALL_NESTED_TABLE_COLS
@@ -357,7 +358,7 @@ EOD;
                     break;
             }
             $this->extractDefault($c, $column['data_default']);
-            $c->comment = array_get($column, 'column_comment', '');
+            $c->comment = Arr::get($column, 'column_comment', '');
 
             if ($c->isPrimaryKey) {
                 foreach ($triggers as $trigger) {
@@ -389,10 +390,10 @@ EOD;
     protected function createColumn($column)
     {
         $c = new ColumnSchema(['name' => $column['column_name']]);
-        $c->autoIncrement = array_get($column, 'auto_increment', false);
+        $c->autoIncrement = Arr::get($column, 'auto_increment', false);
         $c->quotedName = $this->quoteColumnName($c->name);
         $c->allowNull = $column['nullable'] === 'Y';
-        $c->isPrimaryKey = strpos(strval(array_get($column, 'key')), 'P') !== false;
+        $c->isPrimaryKey = strpos(strval(Arr::get($column, 'key')), 'P') !== false;
         $c->dbType = $column['data_type'];
         $c->precision = intval($column['data_precision']);
         $c->scale = intval($column['data_scale']);
@@ -413,12 +414,12 @@ EOD;
         $this->extractLimit($c, $c->dbType);
         $c->fixedLength = $this->extractFixedLength($c->dbType);
         $c->supportsMultibyte = $this->extractMultiByteSupport($c->dbType);
-        $collectionType = array_get($column, 'collection_type');
+        $collectionType = Arr::get($column, 'collection_type');
         switch (strtolower($collectionType)) {
             case 'table':
                 $this->extractType($c, 'table');
-                $nestedTable = array_get($column, 'nested_table_name');
-                $nestedTableOwner = array_get($column, 'nested_table_owner');
+                $nestedTable = Arr::get($column, 'nested_table_name');
+                $nestedTableOwner = Arr::get($column, 'nested_table_owner');
                 $sql = <<<EOD
 SELECT column_name, data_type, data_precision, data_scale, data_length, nullable, data_default
 FROM ALL_NESTED_TABLE_COLS
@@ -443,7 +444,7 @@ EOD;
                 break;
         }
         $this->extractDefault($c, $column['data_default']);
-        $c->comment = array_get($column, 'column_comment', '');
+        $c->comment = Arr::get($column, 'column_comment', '');
 
         return $c;
     }
@@ -477,8 +478,8 @@ SQL;
             if ('R' === $row['constraint_type']) {
                 $row['constraint_type'] = 'foreign key';
             }
-            $colName = array_get($row, 'column_name');
-            $refColName = array_get($row, 'referenced_column_name');
+            $colName = Arr::get($row, 'column_name');
+            $refColName = Arr::get($row, 'referenced_column_name');
             if (isset($constraints[$ts][$tn][$cn])) {
                 $constraints[$ts][$tn][$cn]['column_name'] =
                     array_merge((array)$constraints[$ts][$tn][$cn]['column_name'], (array)$colName);
@@ -522,8 +523,8 @@ EOD;
         $names = [];
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
-            $schemaName = array_get($row, 'TABLE_SCHEMA', '');
-            $resourceName = array_get($row, 'TABLE_NAME', '');
+            $schemaName = Arr::get($row, 'TABLE_SCHEMA', '');
+            $resourceName = Arr::get($row, 'TABLE_NAME', '');
             $internalName = $schemaName . '.' . $resourceName;
             $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
@@ -552,8 +553,8 @@ EOD;
         $names = [];
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
-            $schemaName = array_get($row, 'TABLE_SCHEMA', '');
-            $resourceName = array_get($row, 'TABLE_NAME', '');
+            $schemaName = Arr::get($row, 'TABLE_SCHEMA', '');
+            $resourceName = Arr::get($row, 'TABLE_NAME', '');
             $internalName = $schemaName . '.' . $resourceName;
             $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
@@ -604,12 +605,12 @@ MYSQL;
         $names = [];
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
-            $resourceName = array_get($row, 'OBJECT_NAME');
+            $resourceName = Arr::get($row, 'OBJECT_NAME');
             $schemaName = $schema;
             $internalName = $schemaName . '.' . $resourceName;
             $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);
-            if (!empty($addPackage = array_get($row, 'PROCEDURE_NAME'))) {
+            if (!empty($addPackage = Arr::get($row, 'PROCEDURE_NAME'))) {
                 $resourceName .= '.' . $addPackage;
                 $name .= '.' . $addPackage;
                 $internalName .= '.' . $addPackage;
@@ -645,23 +646,23 @@ MYSQL;
         $rows = $this->connection->select($sql, $bindings);
         foreach ($rows as $row) {
             $row = array_change_key_case((array)$row, CASE_UPPER);
-            $name = array_get($row, 'ARGUMENT_NAME');
-            $pos = intval(array_get($row, 'POSITION'));
-            $simpleType = static::extractSimpleType(array_get($row, 'DATA_TYPE'));
+            $name = Arr::get($row, 'ARGUMENT_NAME');
+            $pos = intval(Arr::get($row, 'POSITION'));
+            $simpleType = static::extractSimpleType(Arr::get($row, 'DATA_TYPE'));
             if ((0 === $pos) || is_null($name)) {
                 $holder->returnType = $simpleType;
             } else {
                 $holder->addParameter(new ParameterSchema([
                         'name'          => $name,
                         'position'      => $pos,
-                        'param_type'    => str_replace('/', '', array_get($row, 'IN_OUT')),
+                        'param_type'    => str_replace('/', '', Arr::get($row, 'IN_OUT')),
                         'type'          => $simpleType,
-                        'db_type'       => array_get($row, 'DATA_TYPE'),
-                        'length'        => (isset($row['DATA_LENGTH']) ? intval(array_get($row, 'DATA_LENGTH')) : null),
-                        'precision'     => (isset($row['DATA_PRECISION']) ? intval(array_get($row, 'DATA_PRECISION'))
+                        'db_type'       => Arr::get($row, 'DATA_TYPE'),
+                        'length'        => (isset($row['DATA_LENGTH']) ? intval(Arr::get($row, 'DATA_LENGTH')) : null),
+                        'precision'     => (isset($row['DATA_PRECISION']) ? intval(Arr::get($row, 'DATA_PRECISION'))
                             : null),
-                        'scale'         => (isset($row['DATA_SCALE']) ? intval(array_get($row, 'DATA_SCALE')) : null),
-                        'default_value' => array_get($row, 'DEFAULT_VALUE'),
+                        'scale'         => (isset($row['DATA_SCALE']) ? intval(Arr::get($row, 'DATA_SCALE')) : null),
+                        'default_value' => Arr::get($row, 'DEFAULT_VALUE'),
                     ]
                 ));
             }
@@ -969,7 +970,7 @@ SQL;
         foreach ($paramSchemas as $key => $paramSchema) {
             switch ($paramSchema->paramType) {
                 case 'IN':
-                    $this->bindValue($statement, ':' . $paramSchema->name, array_get($values, $key));
+                    $this->bindValue($statement, ':' . $paramSchema->name, Arr::get($values, $key));
                     break;
                 case 'INOUT':
                 case 'OUT':
