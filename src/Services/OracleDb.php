@@ -7,6 +7,7 @@ use DreamFactory\Core\SqlDb\Resources\StoredFunction;
 use DreamFactory\Core\SqlDb\Resources\StoredProcedure;
 use DreamFactory\Core\SqlDb\Services\SqlDb;
 use DreamFactory\Core\SqlDb\Resources\Table;
+use Arr;
 
 /**
  * Class OracleDb
@@ -25,10 +26,10 @@ class OracleDb extends SqlDb
         parent::__construct($settings);
 
         $prefix = parent::getConfigBasedCachePrefix();
-        if ($service = array_get($this->config, 'service_name')) {
+        if ($service = Arr::get($this->config, 'service_name')) {
             $prefix = $service . $prefix;
         }
-        if ($tns = array_get($this->config, 'tns')) {
+        if ($tns = Arr::get($this->config, 'tns')) {
             $prefix = $tns . $prefix;
         }
         $this->setConfigBasedCachePrefix($prefix);
