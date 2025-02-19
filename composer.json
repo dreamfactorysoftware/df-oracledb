@@ -31,8 +31,8 @@
   "minimum-stability": "dev",
   "prefer-stable": true,
   "require":     {
-    "dreamfactory/df-sqldb": "~1.0",
-    "yajra/laravel-oci8":    "^9.0"
+    "dreamfactory/df-sqldb": "~1.2",
+    "yajra/laravel-oci8":    "^11.0"
   },
   "autoload":    {
     "psr-4": {
