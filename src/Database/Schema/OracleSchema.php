@@ -12,6 +12,8 @@ use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\SqlDb\Database\Schema\SqlSchema;
 use Arr;
 
+use function Psy\debug;
+
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
  */
@@ -272,14 +274,6 @@ class OracleSchema extends SqlSchema
     {
         $params = [':table1' => $table->resourceName, ':schema1' => $table->schemaName];
 
-        // get all triggers for this table to check for auto incrementation (used as a fallback)
-        $sqlTriggers = <<<EOD
-SELECT trigger_body FROM ALL_TRIGGERS
-WHERE table_owner = :schema1 and table_name = :table1
-and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
-EOD;
-        $triggers = $this->selectColumn($sqlTriggers, $params);
-
         $sql = <<<EOD
 SELECT a.column_name, a.data_type, a.data_precision, a.data_scale, a.data_length, a.nullable, a.data_default,
     (   SELECT D.constraint_type
@@ -362,7 +356,7 @@ EOD;
 
             // Enhanced Auto-increment Detection Logic moved to its own method
             if ($c->isPrimaryKey) {
-                $this->detectAutoIncrement($c, $column, $triggers, $table);
+                $this->detectAutoIncrement($c, $column, $table);
 
                 // If autoIncrement is true by any method, and type is integer, set type to ID.
                 if ($c->autoIncrement && (DbSimpleTypes::TYPE_INTEGER === $c->type)) {
@@ -375,74 +369,89 @@ EOD;
     }
 
     /**
-     * Attempts to determine auto-increment status and sequence name for a primary key column.
+     * Attempts to determine auto-increment status and sequence name for a primary key column,
+     * prioritizing Identity Columns, then DEFAULT value, then Triggers.
      *
      * @param ColumnSchema $columnSchema The column schema object (will be modified).
      * @param array        $columnRawData Raw data for the column from the database.
-     * @param array        $triggers Array of trigger bodies for the table.
      * @param TableSchema  $tableSchema The table schema object (sequenceName might be set).
      * @return void
      */
     private function detectAutoIncrement(
         ColumnSchema &$columnSchema,
         array $columnRawData,
-        array $triggers,
         TableSchema &$tableSchema
     ): void {
-        $columnSchema->autoIncrement = false; // Initialize
-
-        // 1. Check for Oracle 12c+ Identity Column
-        if (array_get_bool($columnRawData, 'identity_column')) {
+        // 1: Checks for Oracle 12c+ Identity Column
+        if ($this->isIdentityColumn($columnRawData)) {
             $columnSchema->autoIncrement = true;
-            return; // Found it, no need to check further
+            return;
         }
 
-        // 2. Check DATA_DEFAULT for sequence.NEXTVAL
-        $rawDataDefault = Arr::get($columnRawData, 'data_default');
+        // 2: Checks column DEFAULT for used sequence.NEXTVAL or Trigger-based auto-increment
+        $sequenceName = $this->getSequenceNameFromDataDefault($columnRawData) ||
+            $this->getSequenceNameFromTrigger($columnSchema, $tableSchema);
+        if ($sequenceName !== null) {
+            $columnSchema->autoIncrement = true;
+            $tableSchema->sequenceName = $sequenceName;
+            return;
+        }
 
-        if (!empty($rawDataDefault)) {
-            $processedDefault = trim(strval($rawDataDefault));
-            $processedDefault = trim($processedDefault, '"'); 
-            $upperDefault = strtoupper($processedDefault);
-            $cleanedUpperDefault = str_replace('"', '', $upperDefault);
+        $columnSchema->autoIncrement = false;
+    }
 
-            if (substr_compare($cleanedUpperDefault, '.NEXTVAL', -8, 8, true) === 0) {
-                $seqPart = trim(substr($cleanedUpperDefault, 0, -8));
-                $matches = [];
-                if (preg_match('/(?:([A-Z0-9_]+)\.)?([A-Z0-9_]+)$/i', $seqPart, $matches)) {
-                    $parsedSeqName = !empty($matches[2]) ? $matches[2] : $matches[1]; 
-                    if (!empty($parsedSeqName)) {
-                        $tableSchema->sequenceName = $parsedSeqName;
-                        $columnSchema->autoIncrement = true;
-                        return;
-                    }
-                }
+    private function isIdentityColumn(array $columnRawData): bool
+    {
+        return strtoupper(Arr::get($columnRawData, 'identity_column', 'NO')) === 'YES';
+    }
+
+    private function getSequenceNameFromDataDefault(array $columnRawData): ?string
+    {
+        $dataDefault = Arr::get($columnRawData, 'data_default');
+        if (empty($dataDefault)) {
+            return null;
+        }
+
+        $cleanedDefault = strtoupper(trim(str_replace('"', '', $dataDefault)));
+
+        if (substr($cleanedDefault, -8) !== '.NEXTVAL') { // Using substr for compatibility
+            return null;
+        }
+
+        $sequencePart = trim(substr($cleanedDefault, 0, -8));
+        return $this->extractSequenceName($sequencePart);
+    }
+
+    private function extractSequenceName(string $seqPart): ?string
+    {
+        // Regex: optionally matches "SCHEMA." prefix (non-capturing for "."), then captures the sequence name.
+        // Example "MYSCHEMA.MYSEQ": $matches[1] = "MYSCHEMA", $matches[2] = "MYSEQ". Returns "MYSEQ".
+        // Example "MYSEQ": $matches[1] = null (or empty string), $matches[2] = "MYSEQ". Returns "MYSEQ".
+        if (preg_match('/(?:([A-Z0-9_]+)\.)?([A-Z0-9_]+)$/i', $seqPart, $matches)) {
+            return $matches[2] ?? null;
+        }
+        return null;
+    }
+
+    private function getSequenceNameFromTrigger(ColumnSchema &$columnSchema, TableSchema &$tableSchema): ?string
+    {
+        $params = [':table1' => $tableSchema->resourceName, ':schema1' => $tableSchema->schemaName];
+        // get all triggers for this table to check for auto incrementation
+        $sqlTriggers = <<<EOD
+            SELECT trigger_body FROM ALL_TRIGGERS
+            WHERE table_owner = :schema1 and table_name = :table1
+            and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
+        EOD;
+        $triggers = $this->selectColumn($sqlTriggers, $params);
+
+        foreach ($triggers as $trigger) {
+            if (false !== stripos($trigger, $columnSchema->name)) {
+                $seq = stristr($trigger, '.nextval', true);
+                $sequenceName = substr($seq, strrpos($seq, ' ') + 1);
+                return $sequenceName;
             }
         }
-
-        // 3. Fall back to trigger-based detection
-        if (!empty($triggers)) {
-            foreach ($triggers as $trigger_body_text) {
-                if (stripos($trigger_body_text, $columnSchema->name) !== false && stripos($trigger_body_text, '.nextval') !== false) {
-                    $seqBeforeNextval = stristr($trigger_body_text, '.nextval', true);
-                    if ($seqBeforeNextval !== false) {
-                        $potentialSeq = '';
-                        if (preg_match('/([[:alnum:]_\"]+)\s*\.\s*NEXTVAL/i', $trigger_body_text, $triggerMatches)) {
-                            $potentialSeq = $triggerMatches[1];
-                        } else {
-                            $potentialSeq = substr($seqBeforeNextval, strrpos($seqBeforeNextval, ' ') + 1);
-                            $potentialSeq = substr($potentialSeq, strrpos($potentialSeq, ':') + 1);
-                        }
-                        $parsedSeqNameFromTrigger = trim($potentialSeq, '\"');
-                        if (!empty($parsedSeqNameFromTrigger)) {
-                            $columnSchema->autoIncrement = true;
-                            $tableSchema->sequenceName = $parsedSeqNameFromTrigger;
-                            return; // Found it
-                        }
-                    }
-                }
-            }
-        }
+        return false;
     }
 
     /**
