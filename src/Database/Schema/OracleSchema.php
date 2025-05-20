@@ -391,7 +391,7 @@ EOD;
         // 2: Checks column DEFAULT for used sequence.NEXTVAL or Trigger-based auto-increment
         $sequenceName = $this->getSequenceNameFromDataDefault($columnRawData) ||
             $this->getSequenceNameFromTrigger($columnSchema, $tableSchema);
-        if ($sequenceName !== null) {
+        if ($sequenceName !== null && !empty($sequenceName)) {
             $columnSchema->autoIncrement = true;
             $tableSchema->sequenceName = $sequenceName;
             return;
