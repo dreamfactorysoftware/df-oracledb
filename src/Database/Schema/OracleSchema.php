@@ -12,6 +12,8 @@ use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\SqlDb\Database\Schema\SqlSchema;
 use Arr;
 
+use function Psy\debug;
+
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
  */
@@ -272,14 +274,6 @@ class OracleSchema extends SqlSchema
     {
         $params = [':table1' => $table->resourceName, ':schema1' => $table->schemaName];
 
-        // get all triggers for this table to check for auto incrementation
-        $sql = <<<EOD
-SELECT trigger_body FROM ALL_TRIGGERS
-WHERE table_owner = :schema1 and table_name = :table1
-and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
-EOD;
-        $triggers = $this->selectColumn($sql, $params);
-
         $sql = <<<EOD
 SELECT a.column_name, a.data_type, a.data_precision, a.data_scale, a.data_length, a.nullable, a.data_default,
     (   SELECT D.constraint_type
@@ -290,7 +284,8 @@ SELECT a.column_name, a.data_type, a.data_precision, a.data_scale, a.data_length
            and C.column_name = A.column_name
            and D.constraint_type = 'P') as Key,
     com.comments as column_comment,
-    ct.coll_type AS collection_type, nt.table_name AS nested_table_name, nt.owner AS nested_table_owner
+    ct.coll_type AS collection_type, nt.table_name AS nested_table_name, nt.owner AS nested_table_owner,
+    a.identity_column
 FROM ALL_TAB_COLUMNS A
 INNER JOIN ALL_OBJECTS B ON b.owner = a.owner and ltrim(B.OBJECT_NAME) = ltrim(A.TABLE_NAME)
 LEFT JOIN user_col_comments com ON (A.table_name = com.table_name AND A.column_name = com.column_name)
@@ -303,15 +298,15 @@ EOD;
         $columns = $this->connection->select($sql, $params);
         foreach ($columns as $column) {
             $column = array_change_key_case((array)$column, CASE_LOWER);
+
             $c = new ColumnSchema(['name' => $column['column_name']]);
             $c->quotedName = $this->quoteColumnName($c->name);
-            $c->autoIncrement = array_get_bool($column, 'identity_column');
             $c->allowNull = $column['nullable'] === 'Y';
             $c->isPrimaryKey = strpos(strval(Arr::get($column, 'key')), 'P') !== false;
             $c->dbType = $column['data_type'];
             $c->precision = intval($column['data_precision']);
             $c->scale = intval($column['data_scale']);
-            // all of this is for consistency across drivers
+            
             if ($c->precision > 0) {
                 if ($c->scale <= 0) {
                     $c->size = $c->precision;
@@ -334,18 +329,17 @@ EOD;
                     $this->extractType($c, 'table');
                     $nestedTable = Arr::get($column, 'nested_table_name');
                     $nestedTableOwner = Arr::get($column, 'nested_table_owner');
-                    $sql = <<<EOD
+                    $sqlNested = <<<EOD
 SELECT column_name, data_type, data_precision, data_scale, data_length, nullable, data_default
 FROM ALL_NESTED_TABLE_COLS
 WHERE owner = '$nestedTableOwner' and table_name = '$nestedTable'
 and HIDDEN_COLUMN = 'NO'
 EOD;
-
-                    $result = $this->connection->select($sql);
+                    $resultNested = $this->connection->select($sqlNested);
                     $nestedColumns = [];
-                    foreach ($result as $nestedColumn) {
-                        $nestedColumn = array_change_key_case((array)$nestedColumn, CASE_LOWER);
-                        $nc = $this->createColumn($nestedColumn);
+                    foreach ($resultNested as $nestedCol) {
+                        $nestedCol = array_change_key_case((array)$nestedCol, CASE_LOWER);
+                        $nc = $this->createColumn($nestedCol);
                         $nestedColumns[$nc->name] = $nc->toArray();
                     }
                     $c->native = ['nested_columns' => $nestedColumns];
@@ -360,24 +354,104 @@ EOD;
             $this->extractDefault($c, $column['data_default']);
             $c->comment = Arr::get($column, 'column_comment', '');
 
+            // Enhanced Auto-increment Detection Logic moved to its own method
             if ($c->isPrimaryKey) {
-                foreach ($triggers as $trigger) {
-                    if (false !== stripos($trigger, $c->name)) {
-                        $c->autoIncrement = true;
-                        $seq = stristr($trigger, '.nextval', true);
-                        $seq = substr($seq, strrpos($seq, ' ') + 1);
-                        $table->sequenceName = $seq;
-                    }
-                }
-                if ($c->autoIncrement) {
-                    if ((DbSimpleTypes::TYPE_INTEGER === $c->type)) {
-                        $c->type = DbSimpleTypes::TYPE_ID;
-                    }
+                $this->detectAutoIncrement($c, $column, $table);
+
+                // If autoIncrement is true by any method, and type is integer, set type to ID.
+                if ($c->autoIncrement && (DbSimpleTypes::TYPE_INTEGER === $c->type)) {
+                    $c->type = DbSimpleTypes::TYPE_ID;
                 }
                 $table->addPrimaryKey($c->name);
             }
             $table->addColumn($c);
         }
+    }
+
+    /**
+     * Attempts to determine auto-increment status and sequence name for a primary key column,
+     * prioritizing Identity Columns, then DEFAULT value, then Triggers.
+     *
+     * @param ColumnSchema $columnSchema The column schema object (will be modified).
+     * @param array        $columnRawData Raw data for the column from the database.
+     * @param TableSchema  $tableSchema The table schema object (sequenceName might be set).
+     * @return void
+     */
+    private function detectAutoIncrement(
+        ColumnSchema &$columnSchema,
+        array $columnRawData,
+        TableSchema &$tableSchema
+    ): void {
+        // 1: Checks for Oracle 12c+ Identity Column
+        if ($this->isIdentityColumn($columnRawData)) {
+            $columnSchema->autoIncrement = true;
+            return;
+        }
+
+        // 2: Checks column DEFAULT for used sequence.NEXTVAL or Trigger-based auto-increment
+        $sequenceName = $this->getSequenceNameFromDataDefault($columnRawData) ||
+            $this->getSequenceNameFromTrigger($columnSchema, $tableSchema);
+        if ($sequenceName !== null && !empty($sequenceName)) {
+            $columnSchema->autoIncrement = true;
+            $tableSchema->sequenceName = $sequenceName;
+            return;
+        }
+
+        $columnSchema->autoIncrement = false;
+    }
+
+    private function isIdentityColumn(array $columnRawData): bool
+    {
+        return strtoupper(Arr::get($columnRawData, 'identity_column', 'NO')) === 'YES';
+    }
+
+    private function getSequenceNameFromDataDefault(array $columnRawData): ?string
+    {
+        $dataDefault = Arr::get($columnRawData, 'data_default');
+        if (empty($dataDefault)) {
+            return null;
+        }
+
+        $cleanedDefault = strtoupper(trim(str_replace('"', '', $dataDefault)));
+
+        if (substr($cleanedDefault, -8) !== '.NEXTVAL') { // Using substr for compatibility
+            return null;
+        }
+
+        $sequencePart = trim(substr($cleanedDefault, 0, -8));
+        return $this->extractSequenceName($sequencePart);
+    }
+
+    private function extractSequenceName(string $seqPart): ?string
+    {
+        // Regex: optionally matches "SCHEMA." prefix (non-capturing for "."), then captures the sequence name.
+        // Example "MYSCHEMA.MYSEQ": $matches[1] = "MYSCHEMA", $matches[2] = "MYSEQ". Returns "MYSEQ".
+        // Example "MYSEQ": $matches[1] = null (or empty string), $matches[2] = "MYSEQ". Returns "MYSEQ".
+        if (preg_match('/(?:([A-Z0-9_]+)\.)?([A-Z0-9_]+)$/i', $seqPart, $matches)) {
+            return $matches[2] ?? null;
+        }
+        return null;
+    }
+
+    private function getSequenceNameFromTrigger(ColumnSchema &$columnSchema, TableSchema &$tableSchema): ?string
+    {
+        $params = [':table1' => $tableSchema->resourceName, ':schema1' => $tableSchema->schemaName];
+        // get all triggers for this table to check for auto incrementation
+        $sqlTriggers = <<<EOD
+            SELECT trigger_body FROM ALL_TRIGGERS
+            WHERE table_owner = :schema1 and table_name = :table1
+            and triggering_event = 'INSERT' and status = 'ENABLED' and trigger_type = 'BEFORE EACH ROW'
+        EOD;
+        $triggers = $this->selectColumn($sqlTriggers, $params);
+
+        foreach ($triggers as $trigger) {
+            if (false !== stripos($trigger, $columnSchema->name)) {
+                $seq = stristr($trigger, '.nextval', true);
+                $sequenceName = substr($seq, strrpos($seq, ' ') + 1);
+                return $sequenceName;
+            }
+        }
+        return null;
     }
 
     /**
@@ -887,24 +961,6 @@ SQL;
     public function extractType(ColumnSchema $column, $dbType)
     {
         parent::extractType($column, $dbType);
-//        if (strpos($dbType, 'FLOAT') !== false) {
-//            $column->phpType = 'double';
-//        }
-//
-//        if (strpos($dbType, 'NUMBER') !== false || strpos($dbType, 'INTEGER') !== false) {
-//            if (strpos($dbType, '(') && preg_match('/\((.*)\)/', $dbType, $matches)) {
-//                $values = explode(',', $matches[1]);
-//                if (isset($values[1]) and (((int)$values[1]) > 0)) {
-//                    $column->phpType = 'double';
-//                } else {
-//                    $column->phpType = 'integer';
-//                }
-//            } else {
-//                $column->phpType = 'double';
-//            }
-//        } else {
-//            $column->phpType = 'string';
-//        }
         if ((false !== strpos($dbType, ' with time zone')) && (false !== strpos($dbType, ' with local time zone'))) {
             switch ($column->type) {
                 case DbSimpleTypes::TYPE_TIMESTAMP:
