@@ -451,7 +451,7 @@ EOD;
                 return $sequenceName;
             }
         }
-        return false;
+        return null;
     }
 
     /**
