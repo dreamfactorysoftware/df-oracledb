@@ -26,4 +26,29 @@ class OracleConnection extends Oci8Connection
 
         return parent::getPdo();
     }
+
+    /**
+     * Execute a query and return the results as an array.
+     * This ensures compatibility with DreamFactory's array-based processing.
+     *
+     * @param string $query
+     * @param array $bindings
+     * @param bool $useReadPdo
+     * @return array
+     */
+    public function select($query, $bindings = [], $useReadPdo = true)
+    {
+        $results = parent::select($query, $bindings, $useReadPdo);
+        
+        // Ensure all results are arrays, not objects
+        if (is_array($results)) {
+            foreach ($results as &$row) {
+                if (is_object($row)) {
+                    $row = (array)$row;
+                }
+            }
+        }
+        
+        return $results;
+    }
 }

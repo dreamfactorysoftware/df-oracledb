@@ -9,7 +9,10 @@ use DreamFactory\Core\Database\Schema\ProcedureSchema;
 use DreamFactory\Core\Database\Schema\RoutineSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
+use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\SqlDb\Database\Schema\SqlSchema;
+use DreamFactory\Core\Database\Components\DataReader;
+use DreamFactory\Core\Exceptions\InternalServerErrorException;
 use Arr;
 
 use function Psy\debug;
@@ -1089,5 +1092,77 @@ SQL;
             default:
                 return $paramSchema->length;
         }
+    }
+
+    /**
+     * @inheritdoc
+     * Override to ensure results are always arrays to prevent array_key_exists errors
+     */
+    public function callFunction($function, array $in_params)
+    {
+        if (!$this->supportsResourceType(DbResourceTypes::TYPE_FUNCTION)) {
+            throw new \Exception('Stored Functions are not supported by this database connection.');
+        }
+
+        $paramSchemas = $function->getParameters();
+        $values = $this->determineRoutineValues($paramSchemas, $in_params);
+
+        $sql = $this->getFunctionStatement($function, $paramSchemas, $values);
+        /** @type \PDOStatement $statement */
+        if (!$statement = $this->connection->getPdo()->prepare($sql)) {
+            throw new \Exception('Failed to prepare statement: ' . $sql);
+        }
+
+        // do binding
+        $this->doRoutineBinding($statement, $paramSchemas, $values);
+
+        // support multiple result sets
+        $result = [];
+        try {
+            $statement->execute();
+            $reader = new \DreamFactory\Core\Database\Components\DataReader($statement);
+            $reader->setFetchMode(static::ROUTINE_FETCH_MODE);
+            do {
+                $temp = $reader->readAll();
+                if (!empty($temp)) {
+                    // Ensure temp is always an array
+                    if (is_object($temp)) {
+                        $temp = (array)$temp;
+                    }
+                    $result[] = $temp;
+                }
+            } while ($reader->nextResult());
+        } catch (\Exception $ex) {
+            if (!$this->handleRoutineException($ex)) {
+                $errorInfo = $ex instanceof \PDOException ? $ex : null;
+                $message = $ex->getMessage();
+                throw new \Exception($message, (int)$ex->getCode(), $errorInfo);
+            }
+        }
+
+        // if there is only one data set, just return it
+        if (1 == count($result)) {
+            $result = $result[0];
+            // if there is only one data set, search for an output
+            if (1 == count($result)) {
+                $result = current($result);
+                // Ensure result is always an array before using array_key_exists
+                if (is_object($result)) {
+                    $result = (array)$result;
+                }
+                if (array_key_exists('output', $result)) {
+                    $value = $result['output'];
+
+                    return $this->typecastToClient($value, $function->returnType);
+                } elseif (array_key_exists($function->name, $result)) {
+                    // some vendors return the results as the function's name
+                    $value = $result[$function->name];
+
+                    return $this->typecastToClient($value, $function->returnType);
+                }
+            }
+        }
+
+        return $result;
     }
 }
