@@ -48,7 +48,7 @@ class OracleDbConfig extends SqlDbConfig
     {
         $fields = parent::getConnectionFields();
 
-        return array_merge($fields, ['service_name', 'tns', 'protocol', 'charset']);
+        return array_merge($fields, ['service_name', 'tns', 'protocol', 'charset', 'treat_number_as_decimal']);
     }
 
     public static function getDefaultConnectionInfo()
@@ -77,6 +77,12 @@ class OracleDbConfig extends SqlDbConfig
             'label'       => 'Character Set',
             'type'        => 'string',
             'description' => 'The character set to use for this connection, i.e. ' . static::getDefaultCharset()
+        ];
+        $defaults[] = [
+            'name'        => 'treat_number_as_decimal',
+            'label'       => 'Treat NUMBER as DECIMAL',
+            'type'        => 'boolean',
+            'description' => 'When enabled, Oracle NUMBER columns without explicit precision/scale are treated as DECIMAL instead of INTEGER. Enable this if your NUMBER columns store decimal values.'
         ];
 
         return $defaults;
