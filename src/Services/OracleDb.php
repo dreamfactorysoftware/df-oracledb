@@ -35,6 +35,20 @@ class OracleDb extends SqlDb
         $this->setConfigBasedCachePrefix($prefix);
     }
 
+    /**
+     * Override to apply Oracle-specific configuration after schema is initialized
+     */
+    protected function initializeConnection()
+    {
+        parent::initializeConnection();
+
+        // Apply the treat_number_as_decimal configuration to the schema
+        if ($this->schema && method_exists($this->schema, 'setTreatNumberAsDecimal')) {
+            $treatNumberAsDecimal = Arr::get($this->config, 'treat_number_as_decimal', false);
+            $this->schema->setTreatNumberAsDecimal($treatNumberAsDecimal);
+        }
+    }
+
     public function getResourceHandlers()
     {
         $handlers = parent::getResourceHandlers();
