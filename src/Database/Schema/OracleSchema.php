@@ -12,8 +12,6 @@ use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\SqlDb\Database\Schema\SqlSchema;
 use Arr;
 
-use function Psy\debug;
-
 /**
  * Schema is the class for retrieving metadata information from an Oracle database.
  */
@@ -25,6 +23,11 @@ class OracleSchema extends SqlSchema
     const ROUTINE_FETCH_MODE = \PDO::FETCH_ASSOC;
 
     /**
+     * @var bool Whether to treat NUMBER columns without precision as DECIMAL instead of INTEGER
+     */
+    protected $treatNumberAsDecimal = false;
+
+    /**
      * @var array the abstract column types mapped to physical column types.
      */
     public $columnTypes = [
@@ -33,6 +36,21 @@ class OracleSchema extends SqlSchema
         // new no sequence identity setting from 12c
         //        'pk' => 'NUMBER GENERATED ALWAYS AS IDENTITY',
     ];
+
+    /**
+     * Set whether to treat NUMBER columns without precision as DECIMAL instead of INTEGER
+     *
+     * This affects schema introspection behavior. When enabled, Oracle NUMBER columns
+     * without explicit precision/scale (i.e., defined as just "NUMBER") will be mapped
+     * to DECIMAL type instead of INTEGER, preserving decimal values.
+     *
+     * @param bool $value True to treat unspecified NUMBER as DECIMAL, false for INTEGER (default)
+     * @return void
+     */
+    public function setTreatNumberAsDecimal($value)
+    {
+        $this->treatNumberAsDecimal = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
 
     protected function translateSimpleColumnTypes(array &$info)
     {
@@ -961,6 +979,20 @@ SQL;
     public function extractType(ColumnSchema $column, $dbType)
     {
         parent::extractType($column, $dbType);
+
+        // Additional override for NUMBER type when treat_number_as_decimal is enabled
+        // This is necessary because parent::extractType() calls extractSimpleType() with
+        // $column->size (which may be 22 for unspecified NUMBER), but we need to check
+        // $column->precision (which is NULL for unspecified NUMBER) to accurately detect
+        // when a NUMBER column has no explicit precision/scale definition
+        if ($this->treatNumberAsDecimal &&
+            strtolower($dbType) === 'number' &&
+            $column->precision === null &&
+            $column->scale === null) {
+            $column->type = DbSimpleTypes::TYPE_DECIMAL;
+        }
+
+        // Handle Oracle timezone types
         if ((false !== strpos($dbType, ' with time zone')) && (false !== strpos($dbType, ' with local time zone'))) {
             switch ($column->type) {
                 case DbSimpleTypes::TYPE_TIMESTAMP:
@@ -1089,5 +1121,46 @@ SQL;
             default:
                 return $paramSchema->length;
         }
+    }
+
+    /**
+     * Override parent to handle Oracle NUMBER type with configuration option
+     *
+     * Oracle NUMBER types require special handling because:
+     * 1. NUMBER(1) is commonly used for booleans
+     * 2. NUMBER without precision can store both integers and decimals
+     * 3. The default behavior (treating NUMBER as INTEGER) causes data loss for decimal values
+     *
+     * @param string $type Database type name
+     * @param int|null $size Column size/precision
+     * @param int|null $scale Column scale (decimal places)
+     * @return string DreamFactory simple type constant
+     */
+    public function extractSimpleType($type, $size = null, $scale = null)
+    {
+        // Handle Oracle NUMBER type with configuration option
+        if (strtolower($type) === 'number') {
+            // SIZE === 1: Boolean (NUMBER(1) is Oracle convention for boolean)
+            if ($size === 1) {
+                return DbSimpleTypes::TYPE_BOOLEAN;
+            }
+
+            // If treat_number_as_decimal is enabled and both precision and scale are NULL,
+            // treat as DECIMAL instead of INTEGER to preserve decimal values
+            if ($this->treatNumberAsDecimal && $size === null && $scale === null) {
+                return DbSimpleTypes::TYPE_DECIMAL;
+            }
+
+            // If scale is explicitly set (not null and > 0), it's a decimal
+            if ($scale !== null && $scale > 0) {
+                return DbSimpleTypes::TYPE_DECIMAL;
+            }
+
+            // Otherwise, treat as INTEGER (preserves backwards compatibility)
+            return DbSimpleTypes::TYPE_INTEGER;
+        }
+
+        // For all other types, use parent implementation
+        return parent::extractSimpleType($type, $size, $scale);
     }
 }
