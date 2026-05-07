@@ -22,7 +22,7 @@ class OracleConnector extends \Yajra\Oci8\Connectors\OracleConnector
     /**
      * @inheritdoc
      */
-    public function createConnection($tns, array $config, array $options)
+    public function createConnection($tns, array $config, array $options): PDO|Oci8
     {
         // add fallback in case driver is not set, will use pdo instead
         if (! in_array($config['driver'], ['oci8', 'pdo-via-oci8', 'oracle'])) {

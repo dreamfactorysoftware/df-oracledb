@@ -9,12 +9,10 @@ class OracleConnection extends Oci8Connection
 {
     /**
      * Get the default query grammar instance.
-     *
-     * @return \Illuminate\Database\Grammar|\Yajra\Oci8\Query\Grammars\OracleGrammar
      */
-    protected function getDefaultQueryGrammar()
+    protected function getDefaultQueryGrammar(): \Yajra\Oci8\Query\Grammars\OracleGrammar
     {
-        return $this->withTablePrefix(new QueryGrammar());
+        return new QueryGrammar($this);
     }
 
     public function getPdo()

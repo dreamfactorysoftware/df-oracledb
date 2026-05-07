@@ -14,7 +14,7 @@ class OracleGrammar extends \Yajra\Oci8\Query\Grammars\OracleGrammar
      * @param  string $value
      * @return string
      */
-    protected function wrapValue($value)
+    protected function wrapValue($value): string
     {
         if ($value === '*') {
             return $value;
