@@ -350,10 +350,13 @@ EOD;
                     $sqlNested = <<<EOD
 SELECT column_name, data_type, data_precision, data_scale, data_length, nullable, data_default
 FROM ALL_NESTED_TABLE_COLS
-WHERE owner = '$nestedTableOwner' and table_name = '$nestedTable'
+WHERE owner = :owner and table_name = :name
 and HIDDEN_COLUMN = 'NO'
 EOD;
-                    $resultNested = $this->connection->select($sqlNested);
+                    $resultNested = $this->connection->select($sqlNested, [
+                        ':owner' => $nestedTableOwner,
+                        ':name'  => $nestedTable,
+                    ]);
                     $nestedColumns = [];
                     foreach ($resultNested as $nestedCol) {
                         $nestedCol = array_change_key_case((array)$nestedCol, CASE_LOWER);
@@ -515,11 +518,14 @@ EOD;
                 $sql = <<<EOD
 SELECT column_name, data_type, data_precision, data_scale, data_length, nullable, data_default
 FROM ALL_NESTED_TABLE_COLS
-WHERE owner = '$nestedTableOwner' and table_name = '$nestedTable'
+WHERE owner = :owner and table_name = :name
 and HIDDEN_COLUMN = 'NO'
 EOD;
 
-                $result = $this->connection->select($sql);
+                $result = $this->connection->select($sql, [
+                    ':owner' => $nestedTableOwner,
+                    ':name'  => $nestedTable,
+                ]);
                 $nestedColumns = [];
                 foreach ($result as $nestedColumn) {
                     $nestedColumn = array_change_key_case((array)$nestedColumn, CASE_LOWER);
@@ -546,9 +552,12 @@ EOD;
      */
     protected function getTableConstraints($schema = '')
     {
-        if (is_array($schema)) {
-            $schema = implode("','", $schema);
+        $schemas = is_array($schema) ? array_values($schema) : [$schema];
+        $schemas = array_values(array_filter($schemas, fn ($s) => $s !== '' && $s !== null));
+        if (empty($schemas)) {
+            return [];
         }
+        $placeholders = implode(',', array_fill(0, count($schemas), '?'));
 
         $sql = <<<SQL
 		SELECT A.constraint_type, A.constraint_name, A.owner as table_schema, A.table_name as table_name, B.column_name as column_name,
@@ -557,10 +566,10 @@ EOD;
         left join ALL_CONS_COLUMNS B on B.OWNER = A.OWNER and B.constraint_name = A.constraint_name
         left join ALL_CONSTRAINTS C on C.OWNER = A.r_OWNER and C.constraint_name = A.r_constraint_name
         left join ALL_CONS_COLUMNS D on D.OWNER = C.OWNER and D.constraint_name = C.constraint_name and D.position = B.position
-        WHERE A.OWNER in ('{$schema}')
+        WHERE A.OWNER in ({$placeholders})
 SQL;
 
-        $results = $this->connection->select($sql);
+        $results = $this->connection->select($sql, $schemas);
         $constraints = [];
         foreach ($results as $row) {
             $row = array_change_key_case((array)$row, CASE_LOWER);
@@ -605,12 +614,13 @@ SQL;
         $sql = <<<EOD
 SELECT table_name, owner as table_schema FROM all_tables WHERE nested = 'NO'
 EOD;
-
+        $bindings = [];
         if (!empty($schema)) {
-            $sql .= " AND owner = '$schema'";
+            $sql .= " AND owner = :schema";
+            $bindings[':schema'] = $schema;
         }
 
-        $rows = $this->connection->select($sql);
+        $rows = $this->connection->select($sql, $bindings);
 
         $names = [];
         foreach ($rows as $row) {
@@ -635,12 +645,13 @@ EOD;
         $sql = <<<EOD
 SELECT object_name as table_name, owner as table_schema FROM all_objects WHERE object_type = 'VIEW'
 EOD;
-
+        $bindings = [];
         if (!empty($schema)) {
-            $sql .= " AND owner = '$schema'";
+            $sql .= " AND owner = :schema";
+            $bindings[':schema'] = $schema;
         }
 
-        $rows = $this->connection->select($sql);
+        $rows = $this->connection->select($sql, $bindings);
 
         $names = [];
         foreach ($rows as $row) {
@@ -789,10 +800,21 @@ MYSQL;
         $columns = (array)$columns;
 
         if (!empty($columns)) {
-            if (1 === count($columns)) {
-                return $this->connection->statement("ALTER TABLE $table DROP COLUMN " . $columns[0]);
+            // Quote each identifier — callers historically passed raw user-
+            // supplied column names. Skip if already wrapped in Oracle's
+            // double-quote identifier delimiter.
+            $quotedTable = (str_starts_with(ltrim((string) $table), '"'))
+                ? $table
+                : $this->quoteTableName($table);
+            $quotedCols = array_map(function ($c) {
+                return (str_starts_with(ltrim((string) $c), '"'))
+                    ? (string) $c
+                    : $this->quoteColumnName((string) $c);
+            }, $columns);
+            if (1 === count($quotedCols)) {
+                return $this->connection->statement("ALTER TABLE {$quotedTable} DROP COLUMN " . $quotedCols[0]);
             } else {
-                return $this->connection->statement("ALTER TABLE $table DROP (" . implode(',', $columns) . ")");
+                return $this->connection->statement("ALTER TABLE {$quotedTable} DROP (" . implode(', ', $quotedCols) . ")");
             }
         }
 
