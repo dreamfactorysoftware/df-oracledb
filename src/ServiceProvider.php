@@ -23,8 +23,30 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
             $db->extend('oracle', function ($config) {
                 $connector = new OracleConnector();
                 $connection = $connector->connect($config);
+                $oracleConnection = new OracleConnection($connection, $config["database"], $config["prefix"], $config);
 
-                return new OracleConnection($connection, $config["database"], $config["prefix"], $config);
+                // Registering via extend() bypasses yajra's Connection::resolverFor('oracle'),
+                // which is where laravel-oci8 normally applies its NLS session settings.
+                // Without these, the session uses Oracle defaults (NLS_DATE_FORMAT='DD-MON-RR'),
+                // so ISO 8601 date/datetime strings fail implicit conversion (ORA-01861).
+                if (empty($config['skip_session_vars'])) {
+                    $sessionVars = [
+                        'NLS_TIME_FORMAT'         => 'HH24:MI:SS',
+                        'NLS_DATE_FORMAT'         => 'YYYY-MM-DD HH24:MI:SS',
+                        'NLS_TIMESTAMP_FORMAT'    => 'YYYY-MM-DD HH24:MI:SS',
+                        'NLS_TIMESTAMP_TZ_FORMAT' => 'YYYY-MM-DD HH24:MI:SS TZH:TZM',
+                        'NLS_NUMERIC_CHARACTERS'  => '.,',
+                    ];
+                    // Unlike yajra's resolver, do NOT map $config['schema'] to CURRENT_SCHEMA:
+                    // DreamFactory's service config uses 'schema' for schema filtering
+                    // (including the literal value 'default'), not an Oracle schema name.
+                    if (isset($config['session'])) {
+                        $sessionVars = array_merge($sessionVars, $config['session']);
+                    }
+                    $oracleConnection->setSessionVars($sessionVars);
+                }
+
+                return $oracleConnection;
             });
         });
 

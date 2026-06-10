@@ -3,6 +3,20 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Apply NLS session formats (ISO 8601) on connection, matching laravel-oci8's stock
+  behavior that was bypassed by registering the driver via `DatabaseManager::extend()`.
+  Fixes ORA-01861 when inserting ISO date/datetime strings. Opt out per service with
+  the `skip_session_vars` connection option; override via the `session` option.
+- Map Oracle `DATE` columns to DreamFactory type `datetime` (Oracle `DATE` stores
+  date and time), so the time portion is no longer dropped.
+- Align `getNativeDateTimeFormat()` with the new session formats (`Y-m-d H:i:s` style).
+
+### Changed
+- Schema API now reports Oracle `DATE` columns as `datetime` (previously `date`).
+- Date/timestamp values in query responses are returned ISO-formatted
+  (e.g. `2024-01-15 14:30:00`) instead of Oracle's default `15-JAN-24` style.
+
 ## [0.15.2] - 2018-02-25 
 ### Fixed
 - DF-1303 Correct native date and time format
