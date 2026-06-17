@@ -1,7 +1,7 @@
 {
-  "name":        "dreamfactory/df-oracledb",
+  "name": "dreamfactory/df-oracledb",
   "description": "The DreamFactory(tm) Oracle DB Service.",
-  "keywords":    [
+  "keywords": [
     "dreamfactory",
     "api",
     "rest",
@@ -10,45 +10,45 @@
     "database",
     "db"
   ],
-  "homepage":    "https://www.dreamfactory.com/",
-  "license":     "proprietary",
-  "authors":     [
+  "homepage": "https://www.dreamfactory.com/",
+  "license": "proprietary",
+  "authors": [
     {
-      "name":  "Arif Islam",
+      "name": "Arif Islam",
       "email": "arifislam@dreamfactory.com"
     },
     {
-      "name":  "Lee Hicks",
+      "name": "Lee Hicks",
       "email": "leehicks@dreamfactory.com"
     }
   ],
-  "support":     {
-    "email":  "dspsupport@dreamfactory.com",
+  "support": {
+    "email": "dspsupport@dreamfactory.com",
     "source": "https://github.com/dreamfactorysoftware/df-oracledb",
     "issues": "https://github.com/dreamfactorysoftware/df-oracledb/issues",
-    "wiki":   "https://wiki.dreamfactory.com"
+    "wiki": "https://wiki.dreamfactory.com"
   },
   "minimum-stability": "dev",
   "prefer-stable": true,
-  "require":     {
-    "php":                   "^8.3",
-    "laravel/helpers":       "^1.8",
+  "require": {
+    "php": "^8.3",
+    "laravel/helpers": "^1.8",
     "dreamfactory/df-sqldb": "~1.4",
-    "yajra/laravel-oci8":    "^13.3"
+    "yajra/laravel-oci8": "^11.0 || ^12.0 || ^13.0"
   },
   "require-dev": {
-    "laravel/framework":     "^13.7",
-    "mockery/mockery":       "^1.6",
-    "nunomaduro/collision":  "^8.6",
-    "phpunit/phpunit":       "^11.5.3",
-    "orchestra/testbench":   "^11.0"
+    "laravel/framework": "^11.15 || ^12.0 || ^13.7",
+    "mockery/mockery": "^1.6",
+    "nunomaduro/collision": "^7.0 || ^8.6",
+    "phpunit/phpunit": "^10.5 || ^11.5.3",
+    "orchestra/testbench": "^9.0 || ^10.0 || ^11.0"
   },
-  "autoload":    {
+  "autoload": {
     "psr-4": {
       "DreamFactory\\Core\\Oracle\\": "src/"
     }
   },
-  "extra":       {
+  "extra": {
     "branch-alias": {
       "dev-develop": "0.15.x-dev"
     },

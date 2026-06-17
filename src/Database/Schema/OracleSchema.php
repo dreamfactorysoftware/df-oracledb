@@ -970,24 +970,25 @@ SQL;
         } elseif ($field_info instanceof ParameterSchema) {
             $type = $field_info->type;
         }
+        // These must match the NLS session formats applied in ServiceProvider
+        // (NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS', etc.)
         switch (strtolower(strval($type))) {
             case DbSimpleTypes::TYPE_DATE:
-                return 'd-M-y';
+                return 'Y-m-d';
 
             case DbSimpleTypes::TYPE_TIME:
-                return 'H:i:s.u';
             case DbSimpleTypes::TYPE_TIME_TZ:
-                return 'H:i:s.u P';
+                return 'H:i:s';
 
             case DbSimpleTypes::TYPE_DATETIME:
             case DbSimpleTypes::TYPE_TIMESTAMP:
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
-                return 'd-M-y h.i.s.u A';
+                return 'Y-m-d H:i:s';
 
             case DbSimpleTypes::TYPE_DATETIME_TZ:
             case DbSimpleTypes::TYPE_TIMESTAMP_TZ:
-                return 'd-M-y h.i.s.u A P';
+                return 'Y-m-d H:i:s P';
         }
 
         return null;
@@ -1012,6 +1013,12 @@ SQL;
             $column->precision === null &&
             $column->scale === null) {
             $column->type = DbSimpleTypes::TYPE_DECIMAL;
+        }
+
+        // Oracle DATE columns store both date and time (to the second),
+        // so surface them as datetime rather than date-only
+        if ('date' === strtolower($dbType)) {
+            $column->type = DbSimpleTypes::TYPE_DATETIME;
         }
 
         // Handle Oracle timezone types
