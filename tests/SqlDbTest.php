@@ -30,7 +30,7 @@ class SqlDbTest extends \DreamFactory\Core\Database\Testing\DbServiceTestCase
      */
     protected $service = null;
 
-    public function setup()
+    public function setUp(): void
     {
         parent::setup();
 
@@ -50,7 +50,7 @@ class SqlDbTest extends \DreamFactory\Core\Database\Testing\DbServiceTestCase
         );
     }
 
-    public function tearDown()
+    public function tearDown(): void
     {
         parent::tearDown();
     }
