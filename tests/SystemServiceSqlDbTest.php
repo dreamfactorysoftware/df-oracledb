@@ -9,7 +9,7 @@ class SystemServiceTest extends \DreamFactory\Core\Testing\TestCase
 
     protected $serviceId = 'system';
 
-    public function tearDown()
+    public function tearDown(): void
     {
         $this->deleteDbService(1);
         $this->deleteDbService(2);
