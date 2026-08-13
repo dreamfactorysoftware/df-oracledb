@@ -5,6 +5,7 @@ namespace DreamFactory\Core\Oracle\Resources;
 use DB;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Enums\ApiOptions;
+use DreamFactory\Core\Database\Enums\DbFunctionUses;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\SqlDb\Resources\Table;
 use Illuminate\Database\Query\Builder;
@@ -128,6 +129,32 @@ class OracleTable extends Table
             case DbSimpleTypes::TYPE_ARRAY:
                 return DB::raw($field->name . '_t.*');
             default:
+                if ($function = $field->getDbFunction(DbFunctionUses::SELECT)) {
+                    // Oracle only: alias the expression without the AS keyword.
+                    //
+                    // The parent emits `func(col) AS "COL"`. Under a limit or
+                    // offset, yajra wraps the query for rownum paging and
+                    // rebuilds the outer projection in
+                    // OracleGrammar::compileTableExpressionColumns(), which
+                    // matches /\s+as\s+(.+)$/ and calls wrap() on whatever
+                    // follows. Our alias is already quoted, so wrap() escapes
+                    // those quotes by doubling them and Oracle reads the empty
+                    // "" as a zero-length identifier:
+                    //
+                    //     ORA-01741: illegal zero-length identifier
+                    //
+                    // Oracle allows `expr "alias"` with no AS, so that branch
+                    // stops matching and the expression falls through to the
+                    // grammar's own str_contains($value, '(') guard, which
+                    // projects t2.* - correct here, because the inner query has
+                    // already applied the alias.
+                    //
+                    // The alias stays quoted on purpose: dropping the quotes
+                    // would let Oracle fold it to upper case, which breaks any
+                    // lower or mixed case column.
+                    return DB::raw($function . ' ' . $field->getName(true, true));
+                }
+
                 return parent::parseFieldForSelect($field);
         }
     }
